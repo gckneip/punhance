@@ -12,6 +12,18 @@ A desktop personal finance manager built with **Python** and **PySide6 (Qt)**, b
 - **Monthly Summary & Category Breakdown** — visual breakdown of income and expenses
 - **Financial Events** — a unified ledger of income, expenses, and transfers
 
+## 📥 Download
+
+No need to clone the repo or install Python — grab a ready-to-run build from the [latest release](https://github.com/gckneip/punhance/releases/latest):
+
+[![Download for Linux](https://img.shields.io/badge/Download-Linux-blue?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/gckneip/punhance/releases/latest/download/finance-manager-linux)
+[![Download for Windows](https://img.shields.io/badge/Download-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/gckneip/punhance/releases/latest/download/finance-manager-windows.exe)
+
+- **Linux:** download `finance-manager-linux`, then `chmod +x finance-manager-linux` and run it (`./finance-manager-linux`). GitHub doesn't preserve the executable bit on download, so this step is required.
+- **Windows:** download `finance-manager-windows.exe` and run it. Since the executable isn't code-signed, Windows SmartScreen may show a warning the first time — click **More info → Run anyway**.
+
+Builds are generated automatically for every tagged release via GitHub Actions (see [`.github/workflows/release.yml`](.github/workflows/release.yml)).
+
 ## 🏗️ Architecture
 
 The project follows a **Clean Architecture** style, split into four layers:
@@ -26,7 +38,9 @@ src/
 
 This keeps business logic independent of the UI framework and the storage engine, making each layer easy to test and evolve on its own.
 
-## 🚀 Getting Started
+## 🚀 Running from Source
+
+Prefer to run from source instead of the prebuilt binaries above? Here's how.
 
 ### Requirements
 
