@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from src.domain.entities.credit_card import CreditCard
 from src.domain.entities.financial_event import FinancialEvent, EventType
 from src.domain.repositories.credit_card_repository import CreditCardRepository
@@ -32,6 +32,19 @@ class CreditCardUseCases:
             due_day=dto.due_day,
             is_active=dto.is_active,
         )
+        self._repository.save(card)
+        return self._to_dto(card)
+
+    def update_card(self, card_id: str, dto: CreateCreditCardDTO) -> Optional[CreditCardDTO]:
+        card = self._repository.find_by_id(card_id)
+        if card is None:
+            return None
+        card.name = dto.name
+        card.issuer = dto.issuer
+        card.credit_limit = dto.credit_limit
+        card.closing_day = dto.closing_day
+        card.due_day = dto.due_day
+        card.is_active = dto.is_active
         self._repository.save(card)
         return self._to_dto(card)
 

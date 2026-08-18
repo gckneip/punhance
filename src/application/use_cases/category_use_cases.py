@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from src.domain.entities.category import Category
 from src.domain.repositories.category_repository import CategoryRepository
 from src.application.dto.category_dto import CreateCategoryDTO, CategoryDTO
@@ -14,6 +14,16 @@ class CategoryUseCases:
             color=dto.color,
             parent_id=dto.parent_id,
         )
+        self._category_repository.save(category)
+        return self._to_dto(category)
+
+    def update_category(self, category_id: str, dto: CreateCategoryDTO) -> Optional[CategoryDTO]:
+        category = self._category_repository.find_by_id(category_id)
+        if category is None:
+            return None
+        category.name = dto.name
+        category.color = dto.color
+        category.parent_id = dto.parent_id
         self._category_repository.save(category)
         return self._to_dto(category)
 

@@ -81,6 +81,18 @@ class MainWindow(QMainWindow):
         self._tabs.setCurrentWidget(self._dashboard)
         self._dashboard.focus_quick_add()
 
+    def _make_actions_widget(self, actions):
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(4)
+        for label, handler in actions:
+            btn = QPushButton(label)
+            btn.clicked.connect(handler)
+            layout.addWidget(btn)
+        layout.addStretch()
+        return widget
+
     def _build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
@@ -183,9 +195,9 @@ class MainWindow(QMainWindow):
         layout.addLayout(btn_row)
 
         self._accounts_table = QTableWidget()
-        self._accounts_table.setColumnCount(4)
+        self._accounts_table.setColumnCount(5)
         self._accounts_table.setHorizontalHeaderLabels(
-            ["Name", "Type", "Initial Balance", "ID"]
+            ["Name", "Type", "Initial Balance", "ID", "Actions"]
         )
         self._accounts_table.horizontalHeader().setStretchLastSection(True)
         self._accounts_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -207,9 +219,9 @@ class MainWindow(QMainWindow):
         layout.addLayout(btn_row)
 
         self._categories_table = QTableWidget()
-        self._categories_table.setColumnCount(3)
+        self._categories_table.setColumnCount(4)
         self._categories_table.setHorizontalHeaderLabels(
-            ["Name", "Color", "Parent"]
+            ["Name", "Color", "Parent", "Actions"]
         )
         self._categories_table.horizontalHeader().setStretchLastSection(True)
         self._categories_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -231,8 +243,8 @@ class MainWindow(QMainWindow):
         layout.addLayout(btn_row)
 
         self._counterparties_table = QTableWidget()
-        self._counterparties_table.setColumnCount(2)
-        self._counterparties_table.setHorizontalHeaderLabels(["Name", "ID"])
+        self._counterparties_table.setColumnCount(3)
+        self._counterparties_table.setHorizontalHeaderLabels(["Name", "ID", "Actions"])
         self._counterparties_table.horizontalHeader().setStretchLastSection(True)
         self._counterparties_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._counterparties_table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -258,9 +270,9 @@ class MainWindow(QMainWindow):
         layout.addLayout(btn_row)
 
         self._credit_cards_table = QTableWidget()
-        self._credit_cards_table.setColumnCount(8)
+        self._credit_cards_table.setColumnCount(9)
         self._credit_cards_table.setHorizontalHeaderLabels(
-            ["Name", "Issuer", "Credit Limit", "Closing Day", "Due Day", "Active", "Current Debt", "Available Credit"]
+            ["Name", "Issuer", "Credit Limit", "Closing Day", "Due Day", "Active", "Current Debt", "Available Credit", "Actions"]
         )
         self._credit_cards_table.horizontalHeader().setStretchLastSection(True)
         self._credit_cards_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -303,6 +315,23 @@ class MainWindow(QMainWindow):
             self._account_use_cases.create_account(dto)
             self._refresh_all()
 
+    def _edit_account(self, account_id):
+        accounts = {a.id: a for a in self._account_use_cases.list_accounts()}
+        account = accounts.get(account_id)
+        if account is None:
+            return
+
+        dialog = AccountDialog(self, account=account)
+        if dialog.exec():
+            data = dialog.get_data()
+            dto = CreateAccountDTO(
+                name=data["name"],
+                type=data["type"],
+                initial_balance=data["initial_balance"],
+            )
+            self._account_use_cases.update_account(account_id, dto)
+            self._refresh_all()
+
     def _add_category(self):
         categories = self._category_use_cases.list_categories()
         dialog = CategoryDialog(categories, self)
@@ -316,12 +345,42 @@ class MainWindow(QMainWindow):
             self._category_use_cases.create_category(dto)
             self._refresh_all()
 
+    def _edit_category(self, category_id):
+        categories = self._category_use_cases.list_categories()
+        category = next((c for c in categories if c.id == category_id), None)
+        if category is None:
+            return
+
+        dialog = CategoryDialog(categories, self, category=category)
+        if dialog.exec():
+            data = dialog.get_data()
+            dto = CreateCategoryDTO(
+                name=data["name"],
+                color=data["color"],
+                parent_id=data["parent_id"],
+            )
+            self._category_use_cases.update_category(category_id, dto)
+            self._refresh_all()
+
     def _add_counterparty(self):
         dialog = CounterpartyDialog(self)
         if dialog.exec():
             data = dialog.get_data()
             dto = CreateCounterpartyDTO(name=data["name"])
             self._counterparty_use_cases.create_counterparty(dto)
+            self._refresh_all()
+
+    def _edit_counterparty(self, counterparty_id):
+        counterparties = {c.id: c for c in self._counterparty_use_cases.list_counterparties()}
+        counterparty = counterparties.get(counterparty_id)
+        if counterparty is None:
+            return
+
+        dialog = CounterpartyDialog(self, counterparty=counterparty)
+        if dialog.exec():
+            data = dialog.get_data()
+            dto = CreateCounterpartyDTO(name=data["name"])
+            self._counterparty_use_cases.update_counterparty(counterparty_id, dto)
             self._refresh_all()
 
     def _add_credit_card(self):
@@ -337,6 +396,26 @@ class MainWindow(QMainWindow):
                 is_active=data["is_active"],
             )
             self._credit_card_use_cases.create_card(dto)
+            self._refresh_all()
+
+    def _edit_credit_card(self, card_id):
+        cards = {c.id: c for c in self._credit_card_use_cases.list_cards()}
+        card = cards.get(card_id)
+        if card is None:
+            return
+
+        dialog = CreditCardDialog(self, card=card)
+        if dialog.exec():
+            data = dialog.get_data()
+            dto = CreateCreditCardDTO(
+                name=data["name"],
+                issuer=data["issuer"],
+                credit_limit=data["credit_limit"],
+                closing_day=data["closing_day"],
+                due_day=data["due_day"],
+                is_active=data["is_active"],
+            )
+            self._credit_card_use_cases.update_card(card_id, dto)
             self._refresh_all()
 
     def _pay_card(self):
@@ -646,6 +725,9 @@ class MainWindow(QMainWindow):
             self._accounts_table.setItem(i, 1, QTableWidgetItem(a.type))
             self._accounts_table.setItem(i, 2, QTableWidgetItem(f"R$ {a.initial_balance:.2f}"))
             self._accounts_table.setItem(i, 3, QTableWidgetItem(a.id))
+            self._accounts_table.setCellWidget(i, 4, self._make_actions_widget([
+                ("Edit", lambda _, acc_id=a.id: self._edit_account(acc_id)),
+            ]))
         self._accounts_table.resizeColumnsToContents()
 
     def _refresh_categories(self):
@@ -657,6 +739,9 @@ class MainWindow(QMainWindow):
             self._categories_table.setItem(i, 1, QTableWidgetItem(c.color or ""))
             parent_name = categories_map.get(c.parent_id, "") if c.parent_id else ""
             self._categories_table.setItem(i, 2, QTableWidgetItem(parent_name))
+            self._categories_table.setCellWidget(i, 3, self._make_actions_widget([
+                ("Edit", lambda _, cat_id=c.id: self._edit_category(cat_id)),
+            ]))
         self._categories_table.resizeColumnsToContents()
 
     def _refresh_counterparties(self):
@@ -665,6 +750,9 @@ class MainWindow(QMainWindow):
         for i, c in enumerate(counterparties):
             self._counterparties_table.setItem(i, 0, QTableWidgetItem(c.name))
             self._counterparties_table.setItem(i, 1, QTableWidgetItem(c.id))
+            self._counterparties_table.setCellWidget(i, 2, self._make_actions_widget([
+                ("Edit", lambda _, cp_id=c.id: self._edit_counterparty(cp_id)),
+            ]))
         self._counterparties_table.resizeColumnsToContents()
 
     def _refresh_credit_cards(self):
@@ -685,6 +773,10 @@ class MainWindow(QMainWindow):
             else:
                 self._credit_cards_table.setItem(i, 6, QTableWidgetItem("R$ 0.00"))
                 self._credit_cards_table.setItem(i, 7, QTableWidgetItem(f"R$ {c.credit_limit:.2f}"))
+
+            self._credit_cards_table.setCellWidget(i, 8, self._make_actions_widget([
+                ("Edit", lambda _, card_id=c.id: self._edit_credit_card(card_id)),
+            ]))
 
         self._credit_cards_table.resizeColumnsToContents()
 

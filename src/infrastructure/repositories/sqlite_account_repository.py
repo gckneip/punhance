@@ -1,6 +1,6 @@
 import sqlite3
 from typing import List, Optional
-from src.domain.entities.account import Account
+from src.domain.entities.account import Account, AccountType
 from src.domain.repositories.account_repository import AccountRepository
 
 
@@ -11,7 +11,7 @@ class SQLiteAccountRepository(AccountRepository):
     def save(self, account: Account) -> None:
         self._conn.execute(
             "INSERT OR REPLACE INTO accounts (id, name, type, initial_balance) VALUES (?, ?, ?, ?)",
-            (account.id, account.name, account.type, account.initial_balance),
+            (account.id, account.name, account.type.value, account.initial_balance),
         )
         self._conn.commit()
 
@@ -26,7 +26,7 @@ class SQLiteAccountRepository(AccountRepository):
         return Account(
             id=row["id"],
             name=row["name"],
-            type=row["type"],
+            type=AccountType(row["type"]),
             initial_balance=row["initial_balance"],
         )
 
@@ -38,7 +38,7 @@ class SQLiteAccountRepository(AccountRepository):
             Account(
                 id=row["id"],
                 name=row["name"],
-                type=row["type"],
+                type=AccountType(row["type"]),
                 initial_balance=row["initial_balance"],
             )
             for row in cursor.fetchall()

@@ -1,10 +1,11 @@
 from dataclasses import dataclass
+from src.domain.entities.account import AccountType
 
 
 @dataclass
 class CreateAccountDTO:
     name: str
-    type: str
+    type: AccountType
     initial_balance: float = 0.0
 
 

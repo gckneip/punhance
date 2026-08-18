@@ -5,9 +5,9 @@ from PySide6.QtWidgets import (
 
 
 class CreditCardDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, card=None):
         super().__init__(parent)
-        self.setWindowTitle("Create Credit Card")
+        self.setWindowTitle("Edit Credit Card" if card else "Create Credit Card")
         self.setModal(True)
         self.resize(350, 280)
 
@@ -43,6 +43,14 @@ class CreditCardDialog(QDialog):
         buttons.accepted.connect(self._validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+        if card is not None:
+            self.name_edit.setText(card.name)
+            self.issuer_edit.setText(card.issuer)
+            self.limit_spin.setValue(card.credit_limit)
+            self.closing_spin.setValue(card.closing_day)
+            self.due_spin.setValue(card.due_day)
+            self.active_check.setChecked(card.is_active)
 
     def _validate_and_accept(self):
         if not self.name_edit.text().strip():

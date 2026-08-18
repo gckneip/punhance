@@ -4,9 +4,9 @@ from PySide6.QtWidgets import (
 
 
 class CounterpartyDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, counterparty=None):
         super().__init__(parent)
-        self.setWindowTitle("Create Counterparty")
+        self.setWindowTitle("Edit Counterparty" if counterparty else "Create Counterparty")
         self.setModal(True)
         self.resize(350, 120)
 
@@ -22,6 +22,9 @@ class CounterpartyDialog(QDialog):
         buttons.accepted.connect(self._validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+        if counterparty is not None:
+            self.name_edit.setText(counterparty.name)
 
     def _validate_and_accept(self):
         if not self.name_edit.text().strip():

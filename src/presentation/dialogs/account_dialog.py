@@ -2,12 +2,13 @@ from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QComboBox, QDoubleSpinBox,
     QDialogButtonBox, QVBoxLayout, QMessageBox,
 )
+from src.domain.entities.account import AccountType
 
 
 class AccountDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, account=None):
         super().__init__(parent)
-        self.setWindowTitle("Create Account")
+        self.setWindowTitle("Edit Account" if account else "Create Account")
         self.setModal(True)
         self.resize(350, 200)
 
@@ -18,7 +19,8 @@ class AccountDialog(QDialog):
         form.addRow("Name:", self.name_edit)
 
         self.type_combo = QComboBox()
-        self.type_combo.addItems(["Cash", "Checking Account", "Savings Account", "Investment Account"])
+        for account_type in AccountType:
+            self.type_combo.addItem(account_type.value, account_type)
         form.addRow("Type:", self.type_combo)
 
         self.balance_spin = QDoubleSpinBox()
@@ -27,6 +29,13 @@ class AccountDialog(QDialog):
         form.addRow("Initial Balance:", self.balance_spin)
 
         layout.addLayout(form)
+
+        if account is not None:
+            self.name_edit.setText(account.name)
+            index = self.type_combo.findText(account.type)
+            if index >= 0:
+                self.type_combo.setCurrentIndex(index)
+            self.balance_spin.setValue(account.initial_balance)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self._validate_and_accept)
@@ -42,6 +51,6 @@ class AccountDialog(QDialog):
     def get_data(self):
         return {
             "name": self.name_edit.text().strip(),
-            "type": self.type_combo.currentText(),
+            "type": self.type_combo.currentData(),
             "initial_balance": self.balance_spin.value(),
         }

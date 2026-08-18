@@ -69,7 +69,7 @@ class AccountSummaryService:
             item = AccountSummaryItem(
                 account_id=acc.id,
                 account_name=acc.name,
-                account_type=acc.type,
+                account_type=acc.type.value,
                 initial_balance=acc.initial_balance,
                 total_income=a["income"],
                 total_expenses=a["expenses"],

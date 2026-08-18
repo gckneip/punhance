@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from src.domain.entities.counterparty import Counterparty
 from src.domain.repositories.counterparty_repository import CounterpartyRepository
 from src.application.dto.counterparty_dto import CreateCounterpartyDTO, CounterpartyDTO
@@ -10,6 +10,14 @@ class CounterpartyUseCases:
 
     def create_counterparty(self, dto: CreateCounterpartyDTO) -> CounterpartyDTO:
         entity = Counterparty(name=dto.name)
+        self._counterparty_repository.save(entity)
+        return self._to_dto(entity)
+
+    def update_counterparty(self, counterparty_id: str, dto: CreateCounterpartyDTO) -> Optional[CounterpartyDTO]:
+        entity = self._counterparty_repository.find_by_id(counterparty_id)
+        if entity is None:
+            return None
+        entity.name = dto.name
         self._counterparty_repository.save(entity)
         return self._to_dto(entity)
 
