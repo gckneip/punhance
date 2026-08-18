@@ -22,7 +22,7 @@ No need to clone the repo or install Python — grab a ready-to-run build from t
 - **Linux:** download `finance-manager-linux`, then `chmod +x finance-manager-linux` and run it (`./finance-manager-linux`). GitHub doesn't preserve the executable bit on download, so this step is required.
 - **Windows:** download `finance-manager-windows.exe` and run it. Since the executable isn't code-signed, Windows SmartScreen may show a warning the first time — click **More info → Run anyway**.
 
-Builds are generated automatically for every tagged release via GitHub Actions (see [`.github/workflows/release.yml`](.github/workflows/release.yml)).
+Builds are generated automatically for every tagged release via GitHub Actions. See [`docs/RELEASING.md`](docs/RELEASING.md) for how the pipeline works and how to cut a new release.
 
 ## 🏗️ Architecture
 
@@ -70,12 +70,12 @@ Your data is stored locally in `~/.finance_manager/finance.db` — nothing leave
 
 Design notes and specifications used while building the domain model:
 
-- [`Descripton.md`](Descripton.md) — overall description of transactions and events
-- [`FinancialEventisDescription.md`](FinancialEventisDescription.md) — financial event model
-- [`InvoiceDescription.md`](InvoiceDescription.md) — purchases with multiple items
-- [`Installments.md`](Installments.md) — installment plan logic
-- [`creditCardEspecification.md`](creditCardEspecification.md) — credit card behavior
-- [`AUDIT.md`](AUDIT.md) — post-implementation review and fixes
+- [`docs/Descripton.md`](docs/Descripton.md) — overall description of transactions and events
+- [`docs/FinancialEventisDescription.md`](docs/FinancialEventisDescription.md) — financial event model
+- [`docs/InvoiceDescription.md`](docs/InvoiceDescription.md) — purchases with multiple items
+- [`docs/Installments.md`](docs/Installments.md) — installment plan logic
+- [`docs/creditCardEspecification.md`](docs/creditCardEspecification.md) — credit card behavior
+- [`docs/AUDIT.md`](docs/AUDIT.md) — post-implementation review and fixes
 
 ## 🧰 Tech Stack
 
