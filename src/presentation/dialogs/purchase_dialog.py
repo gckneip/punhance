@@ -1,14 +1,15 @@
-from typing import List
+from typing import Callable, List
 from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QComboBox, QDoubleSpinBox,
     QDateEdit, QTextEdit, QTableWidget, QTableWidgetItem,
     QPushButton, QVBoxLayout, QHBoxLayout, QLabel, QMessageBox,
-    QCheckBox, QSpinBox, QDialogButtonBox,
+    QCheckBox, QSpinBox, QDialogButtonBox, QWidget,
 )
 from PySide6.QtCore import QDate
 from src.application.dto.category_dto import CategoryDTO
 from src.application.dto.credit_card_dto import CreditCardDTO
 from src.application.dto.counterparty_dto import CounterpartyDTO
+from src.presentation.dialogs.counterparty_dialog import CounterpartyDialog
 
 
 class PurchaseDialog(QDialog):
@@ -17,12 +18,14 @@ class PurchaseDialog(QDialog):
         categories: List[CategoryDTO],
         credit_cards: List[CreditCardDTO],
         counterparties: List[CounterpartyDTO],
+        on_create_counterparty: Callable[[str], CounterpartyDTO],
         parent=None,
     ):
         super().__init__(parent)
         self._categories = categories
         self._credit_cards = credit_cards
         self._counterparties = counterparties
+        self._on_create_counterparty = on_create_counterparty
 
         self.setWindowTitle("Create Purchase")
         self.setModal(True)
@@ -69,7 +72,17 @@ class PurchaseDialog(QDialog):
         self.counterparty_combo.addItem("None", None)
         for cp in counterparties:
             self.counterparty_combo.addItem(cp.name, cp.id)
-        form.addRow("Counterparty:", self.counterparty_combo)
+
+        counterparty_row = QWidget()
+        counterparty_row_layout = QHBoxLayout(counterparty_row)
+        counterparty_row_layout.setContentsMargins(0, 0, 0, 0)
+        counterparty_row_layout.addWidget(self.counterparty_combo)
+        self._btn_add_counterparty = QPushButton("+")
+        self._btn_add_counterparty.setFixedWidth(28)
+        self._btn_add_counterparty.setToolTip("New counterparty")
+        self._btn_add_counterparty.clicked.connect(self._add_counterparty)
+        counterparty_row_layout.addWidget(self._btn_add_counterparty)
+        form.addRow("Counterparty:", counterparty_row)
 
         self.notes_edit = QTextEdit()
         self.notes_edit.setMaximumHeight(60)
@@ -107,6 +120,14 @@ class PurchaseDialog(QDialog):
 
     def _on_installments_toggled(self, checked: bool):
         self.installments_spin.setEnabled(checked)
+
+    def _add_counterparty(self):
+        dialog = CounterpartyDialog(self)
+        if dialog.exec():
+            data = dialog.get_data()
+            new_cp = self._on_create_counterparty(data["name"])
+            self.counterparty_combo.addItem(new_cp.name, new_cp.id)
+            self.counterparty_combo.setCurrentIndex(self.counterparty_combo.count() - 1)
 
     def _add_item_row(self, name="", qty=1.0, unit="UNIT", unit_price=0.0, total=0.0, cat_id=None):
         row = self.items_table.rowCount()

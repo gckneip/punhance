@@ -610,7 +610,12 @@ class MainWindow(QMainWindow):
         credit_cards = self._credit_card_use_cases.list_cards()
         counterparties = self._counterparty_use_cases.list_counterparties()
 
-        dialog = PurchaseDialog(categories, credit_cards, counterparties, self)
+        def create_counterparty(name):
+            dto = self._counterparty_use_cases.create_counterparty(CreateCounterpartyDTO(name=name))
+            self._refresh_counterparties()
+            return dto
+
+        dialog = PurchaseDialog(categories, credit_cards, counterparties, create_counterparty, self)
         if dialog.exec():
             data = dialog.get_data()
             items = []
