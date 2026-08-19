@@ -3,7 +3,7 @@ import sqlite3
 from typing import List, Optional
 from datetime import date, datetime
 from src.domain.entities.financial_event import FinancialEvent, EventType
-from src.domain.entities.purchase import Purchase
+from src.domain.entities.purchase import Purchase, PaymentMethod
 from src.domain.entities.purchase_item import PurchaseItem
 from src.domain.entities.installment_plan import InstallmentPlan
 from src.domain.entities.installment import InstallmentStatus
@@ -77,11 +77,11 @@ class PurchaseUseCases:
             installments = []
             warnings = []
 
-            if dto.installment_count > 1:
+            if dto.payment_method == PaymentMethod.CREDIT_CARD:
                 plan = InstallmentPlan(
                     purchase_id=purchase.id,
                     total_amount=dto.total_amount,
-                    installment_count=dto.installment_count,
+                    installment_count=max(dto.installment_count, 1),
                 )
                 self._plan_repo.save(plan, commit=False)
 
@@ -152,10 +152,13 @@ class PurchaseUseCases:
             purchase.notes = dto.notes
             self._purchase_repo.save(purchase, commit=False)
 
+            should_have_plan = dto.payment_method == PaymentMethod.CREDIT_CARD
             existing_plan = self._plan_repo.find_by_purchase(purchase.id)
-            plan_changed = existing_plan is None or (
-                existing_plan.installment_count != dto.installment_count
-                or existing_plan.total_amount != dto.total_amount
+            plan_changed = should_have_plan != (existing_plan is not None) or (
+                existing_plan is not None and (
+                    existing_plan.installment_count != dto.installment_count
+                    or existing_plan.total_amount != dto.total_amount
+                )
             )
             if existing_plan is not None and plan_changed:
                 old_installments = self._installment_repo.find_by_plan(existing_plan.id)
@@ -168,11 +171,11 @@ class PurchaseUseCases:
                     self._installment_repo.delete_by_plan(existing_plan.id, commit=False)
                     self._plan_repo.delete(existing_plan.id, commit=False)
 
-            if plan_changed and dto.installment_count > 1:
+            if plan_changed and should_have_plan:
                 new_plan = InstallmentPlan(
                     purchase_id=purchase.id,
                     total_amount=dto.total_amount,
-                    installment_count=dto.installment_count,
+                    installment_count=max(dto.installment_count, 1),
                 )
                 self._plan_repo.save(new_plan, commit=False)
                 first_due_date = _add_one_month(dto.event_date)
