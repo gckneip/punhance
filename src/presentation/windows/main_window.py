@@ -33,6 +33,7 @@ from src.presentation.widgets.dashboard_widget import DashboardWidget
 from src.presentation.widgets.installments_widget import InstallmentsWidget
 from src.presentation.widgets.category_breakdown_widget import CategoryBreakdownWidget
 from src.presentation.widgets.account_summary_widget import AccountSummaryWidget
+from src.presentation import icons, theme
 
 
 class MainWindow(QMainWindow):
@@ -61,13 +62,14 @@ class MainWindow(QMainWindow):
         self._account_summary_service = account_summary_service
 
         self.setWindowTitle("Personal Finance Manager")
+        self.setWindowIcon(icons.icon("fa6s.sack-dollar", color=theme.PRIMARY))
         self.resize(900, 600)
 
         self._build_ui()
 
         self._dashboard = DashboardWidget(monthly_summary_service, financial_event_use_cases)
         self._dashboard.entry_added.connect(self._refresh_all)
-        self._tabs.insertTab(0, self._dashboard, "Dashboard")
+        self._tabs.insertTab(0, self._dashboard, icons.icon("fa6s.gauge-high"), "Dashboard")
         self._tabs.setCurrentIndex(0)
 
         self._build_shortcuts()
@@ -86,8 +88,9 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(2, 2, 2, 2)
         layout.setSpacing(4)
-        for label, handler in actions:
+        for label, icon_name, handler in actions:
             btn = QPushButton(label)
+            btn.setIcon(icons.icon(icon_name))
             btn.clicked.connect(handler)
             layout.addWidget(btn)
         layout.addStretch()
@@ -105,12 +108,14 @@ class MainWindow(QMainWindow):
 
         self._btn_add_event = QPushButton("+ Event")
         self._btn_add_event.setObjectName("primaryButton")
+        self._btn_add_event.setIcon(icons.icon("fa6s.circle-plus", color="white"))
         self._btn_add_event.setShortcut(QKeySequence("Ctrl+N"))
         self._btn_add_event.setToolTip("Add a financial event (Ctrl+N)")
         self._btn_add_event.clicked.connect(self._add_event)
         toolbar.addWidget(self._btn_add_event)
 
         self._btn_add_purchase = QPushButton("+ Purchase")
+        self._btn_add_purchase.setIcon(icons.icon("fa6s.cart-shopping"))
         self._btn_add_purchase.setShortcut(QKeySequence("Ctrl+Shift+N"))
         self._btn_add_purchase.setToolTip("Add a detailed purchase with items/installments (Ctrl+Shift+N)")
         self._btn_add_purchase.clicked.connect(self._add_purchase)
@@ -165,6 +170,7 @@ class MainWindow(QMainWindow):
         filter_row.addWidget(self._filter_account)
 
         self._btn_filter = QPushButton("Search")
+        self._btn_filter.setIcon(icons.icon("fa6s.magnifying-glass"))
         self._btn_filter.clicked.connect(self._refresh_events)
         filter_row.addWidget(self._btn_filter)
 
@@ -181,7 +187,7 @@ class MainWindow(QMainWindow):
         self._events_table.setAlternatingRowColors(True)
         layout.addWidget(self._events_table)
 
-        self._tabs.addTab(tab, "Events")
+        self._tabs.addTab(tab, icons.icon("fa6s.list"), "Events")
 
     def _build_accounts_tab(self):
         tab = QWidget()
@@ -189,6 +195,7 @@ class MainWindow(QMainWindow):
 
         btn_row = QHBoxLayout()
         btn = QPushButton("+ Account")
+        btn.setIcon(icons.icon("fa6s.wallet"))
         btn.clicked.connect(self._add_account)
         btn_row.addWidget(btn)
         btn_row.addStretch()
@@ -205,7 +212,7 @@ class MainWindow(QMainWindow):
         self._accounts_table.setAlternatingRowColors(True)
         layout.addWidget(self._accounts_table)
 
-        self._tabs.addTab(tab, "Accounts")
+        self._tabs.addTab(tab, icons.icon("fa6s.wallet"), "Accounts")
 
     def _build_categories_tab(self):
         tab = QWidget()
@@ -213,6 +220,7 @@ class MainWindow(QMainWindow):
 
         btn_row = QHBoxLayout()
         btn = QPushButton("+ Category")
+        btn.setIcon(icons.icon("fa6s.tag"))
         btn.clicked.connect(self._add_category)
         btn_row.addWidget(btn)
         btn_row.addStretch()
@@ -229,7 +237,7 @@ class MainWindow(QMainWindow):
         self._categories_table.setAlternatingRowColors(True)
         layout.addWidget(self._categories_table)
 
-        self._tabs.addTab(tab, "Categories")
+        self._tabs.addTab(tab, icons.icon("fa6s.tag"), "Categories")
 
     def _build_counterparties_tab(self):
         tab = QWidget()
@@ -237,6 +245,7 @@ class MainWindow(QMainWindow):
 
         btn_row = QHBoxLayout()
         btn = QPushButton("+ Counterparty")
+        btn.setIcon(icons.icon("fa6s.user-group"))
         btn.clicked.connect(self._add_counterparty)
         btn_row.addWidget(btn)
         btn_row.addStretch()
@@ -251,7 +260,7 @@ class MainWindow(QMainWindow):
         self._counterparties_table.setAlternatingRowColors(True)
         layout.addWidget(self._counterparties_table)
 
-        self._tabs.addTab(tab, "Counterparties")
+        self._tabs.addTab(tab, icons.icon("fa6s.user-group"), "Counterparties")
 
     def _build_credit_cards_tab(self):
         tab = QWidget()
@@ -259,10 +268,12 @@ class MainWindow(QMainWindow):
 
         btn_row = QHBoxLayout()
         btn = QPushButton("+ Credit Card")
+        btn.setIcon(icons.icon("fa6s.credit-card"))
         btn.clicked.connect(self._add_credit_card)
         btn_row.addWidget(btn)
 
         self._btn_pay_card = QPushButton("Pay Card")
+        self._btn_pay_card.setIcon(icons.icon("fa6s.money-bill-wave"))
         self._btn_pay_card.clicked.connect(self._pay_card)
         btn_row.addWidget(self._btn_pay_card)
 
@@ -280,13 +291,13 @@ class MainWindow(QMainWindow):
         self._credit_cards_table.setAlternatingRowColors(True)
         layout.addWidget(self._credit_cards_table)
 
-        self._tabs.addTab(tab, "Credit Cards")
+        self._tabs.addTab(tab, icons.icon("fa6s.credit-card"), "Credit Cards")
 
     def _build_installments_tab(self):
         self._installments_widget = InstallmentsWidget(
             self._installment_use_cases,
         )
-        self._tabs.addTab(self._installments_widget, "Installments")
+        self._tabs.addTab(self._installments_widget, icons.icon("fa6s.calendar-days"), "Installments")
 
     def _build_category_breakdown_tab(self):
         if self._category_breakdown_service:
@@ -294,14 +305,14 @@ class MainWindow(QMainWindow):
                 self._category_breakdown_service,
                 self._category_use_cases,
             )
-            self._tabs.addTab(self._category_breakdown_widget, "Category Breakdown")
+            self._tabs.addTab(self._category_breakdown_widget, icons.icon("fa6s.chart-pie"), "Category Breakdown")
 
     def _build_account_summary_tab(self):
         if self._account_summary_service:
             self._account_summary_widget = AccountSummaryWidget(
                 self._account_summary_service,
             )
-            self._tabs.addTab(self._account_summary_widget, "Account Summary")
+            self._tabs.addTab(self._account_summary_widget, icons.icon("fa6s.chart-line"), "Account Summary")
 
     def _add_account(self):
         dialog = AccountDialog(self)
@@ -726,9 +737,10 @@ class MainWindow(QMainWindow):
             self._accounts_table.setItem(i, 2, QTableWidgetItem(f"R$ {a.initial_balance:.2f}"))
             self._accounts_table.setItem(i, 3, QTableWidgetItem(a.id))
             self._accounts_table.setCellWidget(i, 4, self._make_actions_widget([
-                ("Edit", lambda _, acc_id=a.id: self._edit_account(acc_id)),
+                ("Edit", "fa6s.pen", lambda _, acc_id=a.id: self._edit_account(acc_id)),
             ]))
         self._accounts_table.resizeColumnsToContents()
+        self._accounts_table.resizeRowsToContents()
 
     def _refresh_categories(self):
         categories = self._category_use_cases.list_categories()
@@ -740,9 +752,10 @@ class MainWindow(QMainWindow):
             parent_name = categories_map.get(c.parent_id, "") if c.parent_id else ""
             self._categories_table.setItem(i, 2, QTableWidgetItem(parent_name))
             self._categories_table.setCellWidget(i, 3, self._make_actions_widget([
-                ("Edit", lambda _, cat_id=c.id: self._edit_category(cat_id)),
+                ("Edit", "fa6s.pen", lambda _, cat_id=c.id: self._edit_category(cat_id)),
             ]))
         self._categories_table.resizeColumnsToContents()
+        self._categories_table.resizeRowsToContents()
 
     def _refresh_counterparties(self):
         counterparties = self._counterparty_use_cases.list_counterparties()
@@ -751,9 +764,10 @@ class MainWindow(QMainWindow):
             self._counterparties_table.setItem(i, 0, QTableWidgetItem(c.name))
             self._counterparties_table.setItem(i, 1, QTableWidgetItem(c.id))
             self._counterparties_table.setCellWidget(i, 2, self._make_actions_widget([
-                ("Edit", lambda _, cp_id=c.id: self._edit_counterparty(cp_id)),
+                ("Edit", "fa6s.pen", lambda _, cp_id=c.id: self._edit_counterparty(cp_id)),
             ]))
         self._counterparties_table.resizeColumnsToContents()
+        self._counterparties_table.resizeRowsToContents()
 
     def _refresh_credit_cards(self):
         cards = self._credit_card_use_cases.list_cards()
@@ -775,10 +789,11 @@ class MainWindow(QMainWindow):
                 self._credit_cards_table.setItem(i, 7, QTableWidgetItem(f"R$ {c.credit_limit:.2f}"))
 
             self._credit_cards_table.setCellWidget(i, 8, self._make_actions_widget([
-                ("Edit", lambda _, card_id=c.id: self._edit_credit_card(card_id)),
+                ("Edit", "fa6s.pen", lambda _, card_id=c.id: self._edit_credit_card(card_id)),
             ]))
 
         self._credit_cards_table.resizeColumnsToContents()
+        self._credit_cards_table.resizeRowsToContents()
 
     def _refresh_installments(self):
         credit_cards = self._credit_card_use_cases.list_cards()
