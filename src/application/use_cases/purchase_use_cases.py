@@ -1,6 +1,6 @@
 import calendar
 import sqlite3
-from typing import List
+from typing import List, Optional
 from datetime import date, datetime
 from src.domain.entities.financial_event import FinancialEvent, EventType
 from src.domain.entities.purchase import Purchase
@@ -24,6 +24,13 @@ def _add_one_month(d: date) -> date:
         year, month = d.year, d.month + 1
     max_day = calendar.monthrange(year, month)[1]
     return date(year, month, min(d.day, max_day))
+
+
+def _derive_category_id(items) -> Optional[str]:
+    category_ids = {i.category_id for i in items if i.category_id is not None}
+    if len(category_ids) == 1:
+        return category_ids.pop()
+    return None
 
 
 class PurchaseUseCases:
@@ -50,6 +57,7 @@ class PurchaseUseCases:
                 event_date=dto.event_date,
                 description=dto.description,
                 amount=dto.total_amount,
+                category_id=_derive_category_id(dto.items),
                 counterparty_id=dto.counterparty_id,
                 notes=dto.notes,
             )
@@ -194,6 +202,10 @@ class PurchaseUseCases:
                         f"Item total (R$ {items_total:.2f}) differs from purchase total "
                         f"(R$ {dto.total_amount:.2f}) by R$ {diff:.2f}"
                     )
+
+                if event is not None:
+                    event.category_id = _derive_category_id(dto.items)
+                    self._event_repo.save(event, commit=False)
 
             self._conn.commit()
         except Exception:
