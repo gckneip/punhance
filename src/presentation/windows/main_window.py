@@ -1,10 +1,8 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTabWidget, QTableWidget, QTableWidgetItem,
-    QLabel, QMessageBox, QDateEdit, QComboBox, QLineEdit, QFormLayout,
-    QDialog, QDoubleSpinBox, QDialogButtonBox,
+    QLabel, QMessageBox, QDateEdit, QComboBox, QLineEdit,
 )
-from PySide6.QtCore import QDate
 from PySide6.QtGui import QKeySequence, QShortcut
 from datetime import date, timedelta
 
@@ -21,7 +19,6 @@ from src.application.dto.counterparty_dto import CreateCounterpartyDTO
 from src.application.dto.credit_card_dto import CreateCreditCardDTO
 from src.application.dto.financial_event_dto import CreateFinancialEventDTO
 from src.application.dto.purchase_dto import CreatePurchaseDTO, CreatePurchaseItemDTO
-from src.domain.entities.financial_event import EventType
 from src.domain.entities.purchase import PaymentMethod
 from src.domain.services.monthly_summary_service import MonthlySummaryService
 from src.presentation.dialogs.account_dialog import AccountDialog
@@ -29,6 +26,7 @@ from src.presentation.dialogs.category_dialog import CategoryDialog
 from src.presentation.dialogs.counterparty_dialog import CounterpartyDialog
 from src.presentation.dialogs.credit_card_dialog import CreditCardDialog
 from src.presentation.dialogs.purchase_dialog import PurchaseDialog
+from src.presentation.dialogs.event_dialog import EventDialog
 from src.presentation.widgets.dashboard_widget import DashboardWidget
 from src.presentation.widgets.installments_widget import InstallmentsWidget
 from src.presentation.widgets.category_breakdown_widget import CategoryBreakdownWidget
@@ -69,6 +67,7 @@ class MainWindow(QMainWindow):
 
         self._dashboard = DashboardWidget(monthly_summary_service, financial_event_use_cases)
         self._dashboard.entry_added.connect(self._refresh_all)
+        self._dashboard.edit_event_requested.connect(self._edit_event)
         self._tabs.insertTab(0, self._dashboard, icons.icon("fa6s.gauge-high"), "Dashboard")
         self._tabs.setCurrentIndex(0)
 
@@ -177,9 +176,9 @@ class MainWindow(QMainWindow):
         layout.addLayout(filter_row)
 
         self._events_table = QTableWidget()
-        self._events_table.setColumnCount(10)
+        self._events_table.setColumnCount(11)
         self._events_table.setHorizontalHeaderLabels(
-            ["Date", "Type", "Description", "Amount", "Currency", "Category", "Account", "Counterparty", "Notes", "ID"]
+            ["Date", "Type", "Description", "Amount", "Currency", "Category", "Account", "Counterparty", "Notes", "ID", "Actions"]
         )
         self._events_table.horizontalHeader().setStretchLastSection(True)
         self._events_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -494,115 +493,28 @@ class MainWindow(QMainWindow):
         categories = self._category_use_cases.list_categories()
         counterparties = self._counterparty_use_cases.list_counterparties()
 
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Create Financial Event")
-        dialog.setModal(True)
-        dialog.resize(400, 350)
-
-        layout = QVBoxLayout(dialog)
-        form = QFormLayout()
-
-        date_edit = QDateEdit()
-        date_edit.setDate(QDate.currentDate())
-        date_edit.setCalendarPopup(True)
-        form.addRow("Date:", date_edit)
-
-        type_combo = QComboBox()
-        type_combo.addItems(["expense", "income", "transfer"])
-        form.addRow("Type:", type_combo)
-
-        amount_row = QHBoxLayout()
-        amount_spin = QDoubleSpinBox()
-        amount_spin.setRange(-999999, 999999)
-        amount_row.addWidget(amount_spin)
-
-        currency_combo = QComboBox()
-        currency_combo.addItems(["BRL", "USD", "EUR", "GBP", "JPY", "ARS", "CAD", "AUD"])
-        currency_combo.setCurrentText("BRL")
-        amount_row.addWidget(currency_combo)
-        form.addRow("Amount:", amount_row)
-
-        description_edit = QLineEdit()
-        form.addRow("Description:", description_edit)
-
-        category_combo = QComboBox()
-        category_combo.addItem("None", None)
-        for cat in categories:
-            category_combo.addItem(f"{cat.name}", cat.id)
-        form.addRow("Category:", category_combo)
-
-        account_combo = QComboBox()
-        account_combo.addItem("None", None)
-        for acc in accounts:
-            account_combo.addItem(f"{acc.name} ({acc.type})", acc.id)
-        form.addRow("Account (Source):", account_combo)
-
-        dest_account_combo = QComboBox()
-        dest_account_combo.addItem("None", None)
-        for acc in accounts:
-            dest_account_combo.addItem(f"{acc.name} ({acc.type})", acc.id)
-        dest_account_combo.setVisible(False)
-        dest_label = QLabel("Destination Account:")
-        dest_label.setVisible(False)
-        form.addRow(dest_label, dest_account_combo)
-
-        def _on_type_changed(text):
-            is_transfer = (text == "transfer")
-            dest_account_combo.setVisible(is_transfer)
-            dest_label.setVisible(is_transfer)
-        type_combo.currentTextChanged.connect(_on_type_changed)
-
-        counterparty_combo = QComboBox()
-        counterparty_combo.addItem("None", None)
-        for cp in counterparties:
-            counterparty_combo.addItem(cp.name, cp.id)
-        form.addRow("Counterparty:", counterparty_combo)
-
-        notes_edit = QLineEdit()
-        form.addRow("Notes:", notes_edit)
-
-        layout.addLayout(form)
-
-        def _validate_and_accept():
-            if not description_edit.text().strip():
-                QMessageBox.warning(dialog, "Validation", "Description is required.")
-                return
-            if amount_spin.value() == 0:
-                QMessageBox.warning(dialog, "Validation", "Amount cannot be zero.")
-                return
-            if type_combo.currentText() == "transfer":
-                if dest_account_combo.currentData() is None:
-                    QMessageBox.warning(dialog, "Validation", "Destination account is required for transfers.")
-                    return
-                if dest_account_combo.currentData() == account_combo.currentData():
-                    QMessageBox.warning(dialog, "Validation", "Source and destination accounts must differ.")
-                    return
-            dialog.accept()
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(_validate_and_accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-
+        dialog = EventDialog(accounts, categories, counterparties, self)
         if dialog.exec():
-            type_map = {
-                "expense": EventType.EXPENSE,
-                "income": EventType.INCOME,
-                "transfer": EventType.TRANSFER,
-            }
-            dto = CreateFinancialEventDTO(
-                event_type=type_map[type_combo.currentText()],
-                event_date=date_edit.date().toPython(),
-                description=description_edit.text().strip(),
-                amount=amount_spin.value(),
-                category_id=category_combo.currentData(),
-                account_id=account_combo.currentData(),
-                destination_account_id=dest_account_combo.currentData(),
-                counterparty_id=counterparty_combo.currentData(),
-                currency=currency_combo.currentText(),
-                notes=notes_edit.text().strip() or None,
-            )
+            data = dialog.get_data()
+            dto = CreateFinancialEventDTO(**data)
             self._financial_event_use_cases.create_event(dto)
+            self._refresh_all()
+
+    def _edit_event(self, event_id):
+        events = {e.id: e for e in self._financial_event_use_cases.list_events()}
+        event = events.get(event_id)
+        if event is None:
+            return
+
+        accounts = self._account_use_cases.list_accounts()
+        categories = self._category_use_cases.list_categories()
+        counterparties = self._counterparty_use_cases.list_counterparties()
+
+        dialog = EventDialog(accounts, categories, counterparties, self, event=event)
+        if dialog.exec():
+            data = dialog.get_data()
+            dto = CreateFinancialEventDTO(credit_card_id=event.credit_card_id, **data)
+            self._financial_event_use_cases.update_event(event_id, dto)
             self._refresh_all()
 
     def _add_purchase(self):
@@ -730,6 +642,9 @@ class MainWindow(QMainWindow):
             self._events_table.setItem(i, 7, QTableWidgetItem(cp_name))
             self._events_table.setItem(i, 8, QTableWidgetItem(e.notes or ""))
             self._events_table.setItem(i, 9, QTableWidgetItem(e.id))
+            self._events_table.setCellWidget(i, 10, self._make_actions_widget([
+                ("Edit", "fa6s.pen", lambda _, event_id=e.id: self._edit_event(event_id)),
+            ]))
 
         self._events_table.resizeColumnsToContents()
 

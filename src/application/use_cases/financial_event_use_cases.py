@@ -1,5 +1,5 @@
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime
 from src.domain.entities.financial_event import FinancialEvent, EventType
 from src.domain.repositories.financial_event_repository import FinancialEventRepository
 from src.application.dto.financial_event_dto import CreateFinancialEventDTO, FinancialEventDTO
@@ -23,6 +23,25 @@ class FinancialEventUseCases:
             currency=dto.currency,
             notes=dto.notes,
         )
+        self._repository.save(event)
+        return self._to_dto(event)
+
+    def update_event(self, event_id: str, dto: CreateFinancialEventDTO) -> Optional[FinancialEventDTO]:
+        event = self._repository.find_by_id(event_id)
+        if event is None:
+            return None
+        event.event_type = dto.event_type
+        event.event_date = dto.event_date
+        event.description = dto.description
+        event.amount = dto.amount
+        event.category_id = dto.category_id
+        event.account_id = dto.account_id
+        event.destination_account_id = dto.destination_account_id
+        event.credit_card_id = dto.credit_card_id
+        event.counterparty_id = dto.counterparty_id
+        event.currency = dto.currency
+        event.notes = dto.notes
+        event.updated_at = datetime.now().isoformat()
         self._repository.save(event)
         return self._to_dto(event)
 

@@ -17,6 +17,7 @@ EXPENSE_TYPES = ("expense", "purchase", "card_payment", "loan_payment", "investm
 
 class DashboardWidget(QWidget):
     entry_added = Signal()
+    edit_event_requested = Signal(str)
 
     def __init__(self, monthly_summary_service: MonthlySummaryService, financial_event_use_cases=None):
         super().__init__()
@@ -24,6 +25,7 @@ class DashboardWidget(QWidget):
         self._financial_event_use_cases = financial_event_use_cases
         self._accounts = []
         self._categories = []
+        self._shown_events = []
         self._build_ui()
 
     def _build_ui(self):
@@ -68,6 +70,8 @@ class DashboardWidget(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
+        self._table.setToolTip("Double-click a row to edit that event")
+        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
         layout.addWidget(self._table)
 
     def _build_quick_add_bar(self) -> QFrame:
@@ -121,6 +125,10 @@ class DashboardWidget(QWidget):
 
     def focus_quick_add(self):
         self._qa_description.setFocus()
+
+    def _on_row_double_clicked(self, row, _column):
+        if row < len(self._shown_events):
+            self.edit_event_requested.emit(self._shown_events[row].id)
 
     def _populate_quick_add_combos(self):
         prev_cat = self._qa_category.currentData()
@@ -215,6 +223,7 @@ class DashboardWidget(QWidget):
         categories_map = {c.id: c.name for c in self._categories}
 
         shown_events = events[:20]
+        self._shown_events = shown_events
         self._table.setRowCount(len(shown_events))
         for i, e in enumerate(shown_events):
             self._table.setItem(i, 0, QTableWidgetItem(e.event_date.isoformat()))
