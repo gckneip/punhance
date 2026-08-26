@@ -73,7 +73,7 @@ def main():
     )
     installment_use_cases = InstallmentUseCases(installment_repo, installment_plan_repo)
     monthly_summary_service = MonthlySummaryService(financial_event_repo)
-    category_breakdown_service = CategoryBreakdownService(financial_event_repo)
+    category_breakdown_service = CategoryBreakdownService(financial_event_repo, purchase_repo)
     account_summary_service = AccountSummaryService(financial_event_repo, account_repo)
 
     window = MainWindow(

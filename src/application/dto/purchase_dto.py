@@ -24,6 +24,7 @@ class CreatePurchaseDTO:
     counterparty_id: Optional[str] = None
     notes: Optional[str] = None
     installment_count: int = 1
+    category_id: Optional[str] = None
     items: List[CreatePurchaseItemDTO] = field(default_factory=list)
 
 

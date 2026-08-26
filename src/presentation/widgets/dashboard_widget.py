@@ -2,6 +2,7 @@ from datetime import date
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
     QTableWidgetItem, QFrame, QComboBox, QLineEdit, QDoubleSpinBox, QPushButton,
+    QAbstractItemView, QMessageBox,
 )
 from PySide6.QtCore import Signal, QTimer
 from PySide6.QtGui import QColor
@@ -9,20 +10,29 @@ from src.domain.services.monthly_summary_service import MonthlySummaryService
 from src.domain.entities.financial_event import EventType
 from src.application.dto.financial_event_dto import CreateFinancialEventDTO
 from src.presentation.widgets.stat_card import make_stat_card
-from src.presentation import theme
+from src.presentation import theme, icons
 
 INCOME_TYPES = ("income", "refund")
 EXPENSE_TYPES = ("expense", "purchase", "card_payment", "loan_payment", "investment")
+
+PAYMENT_METHOD_LABELS = {
+    "cash": "Cash",
+    "debit_card": "Debit Card",
+    "credit_card": "Credit Card",
+    "pix": "PIX",
+    "bank_transfer": "Bank Transfer",
+}
 
 
 class DashboardWidget(QWidget):
     entry_added = Signal()
     edit_event_requested = Signal(str)
 
-    def __init__(self, monthly_summary_service: MonthlySummaryService, financial_event_use_cases=None):
+    def __init__(self, monthly_summary_service: MonthlySummaryService, financial_event_use_cases=None, purchase_use_cases=None):
         super().__init__()
         self._summary_service = monthly_summary_service
         self._financial_event_use_cases = financial_event_use_cases
+        self._purchase_use_cases = purchase_use_cases
         self._accounts = []
         self._categories = []
         self._shown_events = []
@@ -59,18 +69,28 @@ class DashboardWidget(QWidget):
         layout.addLayout(cards_layout)
         self._apply_summary_colors(summary.income, summary.expenses, summary.net)
 
+        title_row = QHBoxLayout()
         title = QLabel("Recent Events")
         title.setStyleSheet("font-size: 14px; font-weight: 600; margin-top: 6px;")
-        layout.addWidget(title)
+        title_row.addWidget(title)
+        title_row.addStretch()
+
+        self._btn_delete_selected = QPushButton("Delete Selected")
+        self._btn_delete_selected.setIcon(icons.icon("fa6s.trash", color=theme.EXPENSE))
+        self._btn_delete_selected.clicked.connect(self._delete_selected)
+        title_row.addWidget(self._btn_delete_selected)
+        layout.addLayout(title_row)
 
         self._table = QTableWidget()
-        self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels(["Date", "Type", "Description", "Amount", "Category", "Account"])
-        self._table.horizontalHeader().setStretchLastSection(True)
+        self._table.setColumnCount(8)
+        self._table.setHorizontalHeaderLabels(
+            ["Date", "Type", "Description", "Amount", "Category", "Account/Card", "Payment Method", "Actions"]
+        )
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
-        self._table.setToolTip("Double-click a row to edit that event")
+        self._table.setToolTip("Double-click a row to edit that event, or select rows and use Delete Selected")
         self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
         layout.addWidget(self._table)
 
@@ -129,6 +149,61 @@ class DashboardWidget(QWidget):
     def _on_row_double_clicked(self, row, _column):
         if row < len(self._shown_events):
             self.edit_event_requested.emit(self._shown_events[row].id)
+
+    def _make_actions_widget(self, actions):
+        widget = QWidget()
+        row_layout = QHBoxLayout(widget)
+        row_layout.setContentsMargins(2, 2, 2, 2)
+        row_layout.setSpacing(4)
+        for label, icon_name, color, handler in actions:
+            btn = QPushButton()
+            btn.setIcon(icons.icon(icon_name, color=color))
+            btn.setToolTip(label)
+            btn.setFixedWidth(32)
+            btn.clicked.connect(handler)
+            row_layout.addWidget(btn)
+        row_layout.addStretch()
+        return widget
+
+    def _delete_event_cascade(self, event_id):
+        if self._purchase_use_cases is not None:
+            self._purchase_use_cases.delete_purchase_by_event(event_id)
+        self._financial_event_use_cases.delete_event(event_id)
+
+    def _delete_event(self, event_id):
+        if self._financial_event_use_cases is None:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Delete Event",
+            "Are you sure you want to delete this event?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        self._delete_event_cascade(event_id)
+        self.entry_added.emit()
+
+    def _delete_selected(self):
+        if self._financial_event_use_cases is None:
+            return
+        rows = sorted({idx.row() for idx in self._table.selectionModel().selectedRows()})
+        event_ids = [self._shown_events[r].id for r in rows if r < len(self._shown_events)]
+        if not event_ids:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Delete Events",
+            f"Are you sure you want to delete {len(event_ids)} selected event(s)?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        for event_id in event_ids:
+            self._delete_event_cascade(event_id)
+        self.entry_added.emit()
 
     def _populate_quick_add_combos(self):
         prev_cat = self._qa_category.currentData()
@@ -201,7 +276,7 @@ class DashboardWidget(QWidget):
         self._expenses_label.setStyleSheet(f"color: {theme.EXPENSE};")
         self._balance_label.setStyleSheet(f"color: {theme.INCOME if net >= 0 else theme.EXPENSE};")
 
-    def refresh(self, events, accounts=None, categories=None, counterparties=None):
+    def refresh(self, events, accounts=None, categories=None, counterparties=None, purchases=None, multi_category_event_ids=None, credit_cards=None):
         self._accounts = accounts or []
         self._categories = categories or []
         self._populate_quick_add_combos()
@@ -221,6 +296,17 @@ class DashboardWidget(QWidget):
 
         accounts_map = {a.id: a.name for a in self._accounts}
         categories_map = {c.id: c.name for c in self._categories}
+        cards_map = {c.id: c.name for c in (credit_cards or [])}
+        payment_methods_map = {
+            p.financial_event_id: PAYMENT_METHOD_LABELS.get(p.payment_method, p.payment_method)
+            for p in (purchases or [])
+        }
+        purchase_cards_map = {
+            p.financial_event_id: p.credit_card_id
+            for p in (purchases or [])
+            if p.credit_card_id
+        }
+        multi_category_event_ids = multi_category_event_ids or set()
 
         shown_events = events[:20]
         self._shown_events = shown_events
@@ -237,9 +323,22 @@ class DashboardWidget(QWidget):
                 amount_item.setForeground(QColor(theme.EXPENSE))
             self._table.setItem(i, 3, amount_item)
 
-            cat_name = categories_map.get(e.category_id, str(e.category_id or ""))
-            acc_name = accounts_map.get(e.account_id, str(e.account_id or ""))
+            if e.category_id is None and e.id in multi_category_event_ids:
+                cat_name = "Multiple"
+            else:
+                cat_name = categories_map.get(e.category_id, str(e.category_id or ""))
+            if e.account_id:
+                acc_name = accounts_map.get(e.account_id, str(e.account_id))
+            elif e.id in purchase_cards_map:
+                acc_name = cards_map.get(purchase_cards_map[e.id], "")
+            else:
+                acc_name = ""
             self._table.setItem(i, 4, QTableWidgetItem(cat_name))
             self._table.setItem(i, 5, QTableWidgetItem(acc_name))
+            self._table.setItem(i, 6, QTableWidgetItem(payment_methods_map.get(e.id, "")))
+            self._table.setCellWidget(i, 7, self._make_actions_widget([
+                ("Edit", "fa6s.pen", None, lambda _, event_id=e.id: self.edit_event_requested.emit(event_id)),
+                ("Delete", "fa6s.trash", theme.EXPENSE, lambda _, event_id=e.id: self._delete_event(event_id)),
+            ]))
 
         self._table.resizeColumnsToContents()

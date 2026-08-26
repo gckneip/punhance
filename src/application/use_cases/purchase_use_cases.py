@@ -50,14 +50,20 @@ class PurchaseUseCases:
         self._installment_service = installment_service
         self._conn = conn
 
+    def delete_purchase_by_event(self, financial_event_id: str) -> None:
+        purchase = self._purchase_repo.find_by_financial_event(financial_event_id)
+        if purchase is not None:
+            self._purchase_repo.delete(purchase.id)
+
     def create_purchase(self, dto: CreatePurchaseDTO):
         try:
+            category_id = _derive_category_id(dto.items) if dto.items else dto.category_id
             event = FinancialEvent(
                 event_type=EventType.PURCHASE,
                 event_date=dto.event_date,
                 description=dto.description,
                 amount=dto.total_amount,
-                category_id=_derive_category_id(dto.items),
+                category_id=category_id,
                 counterparty_id=dto.counterparty_id,
                 notes=dto.notes,
             )
@@ -209,6 +215,11 @@ class PurchaseUseCases:
                 if event is not None:
                     event.category_id = _derive_category_id(dto.items)
                     self._event_repo.save(event, commit=False)
+            else:
+                self._purchase_repo.delete_items_by_purchase(purchase.id, commit=False)
+                if event is not None:
+                    event.category_id = dto.category_id
+                    self._event_repo.save(event, commit=False)
 
             self._conn.commit()
         except Exception:
@@ -245,6 +256,21 @@ class PurchaseUseCases:
             ))
         return result
 
+    def get_multi_category_event_ids(self) -> set:
+        result = set()
+        for p in self._purchase_repo.find_all():
+            items = self._purchase_repo.find_items_by_purchase(p.id)
+            category_ids = {i.category_id for i in items if i.category_id is not None}
+            if len(category_ids) > 1:
+                result.add(p.financial_event_id)
+        return result
+
+    def get_purchase_by_event(self, financial_event_id: str):
+        purchase = self._purchase_repo.find_by_financial_event(financial_event_id)
+        if purchase is None:
+            return None
+        return self.get_purchase(purchase.id)
+
     def get_purchase(self, purchase_id: str):
         purchase = self._purchase_repo.find_by_id(purchase_id)
         if purchase is None:
@@ -272,6 +298,7 @@ class PurchaseUseCases:
                 description=event.description if event else None,
             ),
             "event_type": event.event_type.value if event else None,
+            "category_id": event.category_id if event else None,
             "items": [self._item_to_dto(i) for i in items],
             "installments": installments,
         }

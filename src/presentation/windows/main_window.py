@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTabWidget, QTableWidget, QTableWidgetItem,
-    QLabel, QMessageBox, QDateEdit, QComboBox, QLineEdit,
+    QLabel, QMessageBox, QDateEdit, QComboBox, QLineEdit, QAbstractItemView,
 )
 from PySide6.QtGui import QKeySequence, QShortcut
 from datetime import date, timedelta
@@ -65,7 +65,7 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
 
-        self._dashboard = DashboardWidget(monthly_summary_service, financial_event_use_cases)
+        self._dashboard = DashboardWidget(monthly_summary_service, financial_event_use_cases, purchase_use_cases)
         self._dashboard.entry_added.connect(self._refresh_all)
         self._dashboard.edit_event_requested.connect(self._edit_event)
         self._tabs.insertTab(0, self._dashboard, icons.icon("fa6s.gauge-high"), "Dashboard")
@@ -87,9 +87,13 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(2, 2, 2, 2)
         layout.setSpacing(4)
-        for label, icon_name, handler in actions:
-            btn = QPushButton(label)
-            btn.setIcon(icons.icon(icon_name))
+        for action in actions:
+            label, icon_name, handler = action[:3]
+            color = action[3] if len(action) > 3 else None
+            btn = QPushButton()
+            btn.setIcon(icons.icon(icon_name, color=color))
+            btn.setToolTip(label)
+            btn.setFixedWidth(32)
             btn.clicked.connect(handler)
             layout.addWidget(btn)
         layout.addStretch()
@@ -173,6 +177,13 @@ class MainWindow(QMainWindow):
         self._btn_filter.clicked.connect(self._refresh_events)
         filter_row.addWidget(self._btn_filter)
 
+        filter_row.addStretch()
+
+        self._btn_delete_selected_events = QPushButton("Delete Selected")
+        self._btn_delete_selected_events.setIcon(icons.icon("fa6s.trash", color=theme.EXPENSE))
+        self._btn_delete_selected_events.clicked.connect(self._delete_selected_events)
+        filter_row.addWidget(self._btn_delete_selected_events)
+
         layout.addLayout(filter_row)
 
         self._events_table = QTableWidget()
@@ -182,6 +193,7 @@ class MainWindow(QMainWindow):
         )
         self._events_table.horizontalHeader().setStretchLastSection(True)
         self._events_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._events_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._events_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._events_table.setAlternatingRowColors(True)
         layout.addWidget(self._events_table)
@@ -506,6 +518,10 @@ class MainWindow(QMainWindow):
         if event is None:
             return
 
+        if event.event_type == "purchase":
+            self._edit_purchase(event_id)
+            return
+
         accounts = self._account_use_cases.list_accounts()
         categories = self._category_use_cases.list_categories()
         counterparties = self._counterparty_use_cases.list_counterparties()
@@ -516,6 +532,94 @@ class MainWindow(QMainWindow):
             dto = CreateFinancialEventDTO(credit_card_id=event.credit_card_id, **data)
             self._financial_event_use_cases.update_event(event_id, dto)
             self._refresh_all()
+
+    def _edit_purchase(self, event_id):
+        purchase_data = self._purchase_use_cases.get_purchase_by_event(event_id)
+        if purchase_data is None:
+            return
+
+        categories = self._category_use_cases.list_categories()
+        credit_cards = self._credit_card_use_cases.list_cards()
+        counterparties = self._counterparty_use_cases.list_counterparties()
+
+        def create_counterparty(name):
+            dto = self._counterparty_use_cases.create_counterparty(CreateCounterpartyDTO(name=name))
+            self._refresh_counterparties()
+            return dto
+
+        dialog = PurchaseDialog(
+            categories, credit_cards, counterparties, create_counterparty, self,
+            purchase_data=purchase_data,
+        )
+        if dialog.exec():
+            data = dialog.get_data()
+            items = [
+                CreatePurchaseItemDTO(
+                    name=i["name"],
+                    quantity=i["quantity"],
+                    unit=i["unit"],
+                    unit_price=i["unit_price"],
+                    total_price=i["total_price"],
+                    category_id=i["category_id"],
+                )
+                for i in data["items"]
+            ]
+
+            dto = CreatePurchaseDTO(
+                event_date=data["event_date"],
+                description=data["description"],
+                total_amount=data["total_amount"],
+                payment_method=PaymentMethod(data["payment_method"]),
+                credit_card_id=data["credit_card_id"],
+                notes=data["notes"],
+                installment_count=data["installment_count"],
+                counterparty_id=data["counterparty_id"],
+                category_id=data["category_id"],
+                items=items,
+            )
+            result = self._purchase_use_cases.update_purchase(purchase_data["purchase"].id, dto)
+            if result and result.get("warnings"):
+                QMessageBox.warning(self, "Purchase Warning", "\n".join(result["warnings"]))
+            self._refresh_all()
+
+    def _delete_event_cascade(self, event_id):
+        self._purchase_use_cases.delete_purchase_by_event(event_id)
+        self._financial_event_use_cases.delete_event(event_id)
+
+    def _delete_event(self, event_id):
+        reply = QMessageBox.question(
+            self,
+            "Delete Event",
+            "Are you sure you want to delete this event?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        self._delete_event_cascade(event_id)
+        self._refresh_all()
+
+    def _delete_selected_events(self):
+        rows = sorted({idx.row() for idx in self._events_table.selectionModel().selectedRows()})
+        event_ids = [
+            self._events_table.item(r, 9).text()
+            for r in rows
+            if self._events_table.item(r, 9) is not None
+        ]
+        if not event_ids:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Delete Events",
+            f"Are you sure you want to delete {len(event_ids)} selected event(s)?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        for event_id in event_ids:
+            self._delete_event_cascade(event_id)
+        self._refresh_all()
 
     def _add_purchase(self):
         categories = self._category_use_cases.list_categories()
@@ -550,6 +654,7 @@ class MainWindow(QMainWindow):
                 notes=data["notes"],
                 installment_count=data["installment_count"],
                 counterparty_id=data["counterparty_id"],
+                category_id=data["category_id"],
                 items=items,
             )
             result = self._purchase_use_cases.create_purchase(dto)
@@ -621,6 +726,7 @@ class MainWindow(QMainWindow):
         accounts_map = {a.id: a.name for a in self._account_use_cases.list_accounts()}
         categories_map = {c.id: c.name for c in self._category_use_cases.list_categories()}
         counterparties_map = {c.id: c.name for c in self._counterparty_use_cases.list_counterparties()}
+        multi_category_event_ids = self._purchase_use_cases.get_multi_category_event_ids()
 
         self._events_table.setRowCount(len(events))
         for i, e in enumerate(events):
@@ -629,7 +735,10 @@ class MainWindow(QMainWindow):
             self._events_table.setItem(i, 2, QTableWidgetItem(e.description))
             self._events_table.setItem(i, 3, QTableWidgetItem(f"{e.currency} {e.amount:.2f}"))
             self._events_table.setItem(i, 4, QTableWidgetItem(e.currency))
-            cat_name = categories_map.get(e.category_id, str(e.category_id or ""))
+            if e.category_id is None and e.id in multi_category_event_ids:
+                cat_name = "Multiple"
+            else:
+                cat_name = categories_map.get(e.category_id, str(e.category_id or ""))
             self._events_table.setItem(i, 5, QTableWidgetItem(cat_name))
             if e.event_type == "transfer" and e.destination_account_id:
                 src = accounts_map.get(e.account_id, str(e.account_id or ""))
@@ -644,6 +753,7 @@ class MainWindow(QMainWindow):
             self._events_table.setItem(i, 9, QTableWidgetItem(e.id))
             self._events_table.setCellWidget(i, 10, self._make_actions_widget([
                 ("Edit", "fa6s.pen", lambda _, event_id=e.id: self._edit_event(event_id)),
+                ("Delete", "fa6s.trash", lambda _, event_id=e.id: self._delete_event(event_id), theme.EXPENSE),
             ]))
 
         self._events_table.resizeColumnsToContents()
@@ -724,4 +834,9 @@ class MainWindow(QMainWindow):
         categories = self._category_use_cases.list_categories()
         counterparties = self._counterparty_use_cases.list_counterparties()
         events = self._financial_event_use_cases.list_events()
-        self._dashboard.refresh(events, accounts, categories, counterparties)
+        purchases = self._purchase_use_cases.list_purchases()
+        multi_category_event_ids = self._purchase_use_cases.get_multi_category_event_ids()
+        credit_cards = self._credit_card_use_cases.list_cards()
+        self._dashboard.refresh(
+            events, accounts, categories, counterparties, purchases, multi_category_event_ids, credit_cards
+        )
