@@ -11,6 +11,7 @@ from src.infrastructure.repositories.sqlite_financial_event_repository import SQ
 from src.infrastructure.repositories.sqlite_purchase_repository import SQLitePurchaseRepository
 from src.infrastructure.repositories.sqlite_installment_plan_repository import SQLiteInstallmentPlanRepository
 from src.infrastructure.repositories.sqlite_installment_repository import SQLiteInstallmentRepository
+from src.infrastructure.repositories.sqlite_dashboard_widget_repository import SQLiteDashboardWidgetRepository
 from src.application.use_cases.account_use_cases import AccountUseCases
 from src.application.use_cases.category_use_cases import CategoryUseCases
 from src.application.use_cases.counterparty_use_cases import CounterpartyUseCases
@@ -18,18 +19,22 @@ from src.application.use_cases.credit_card_use_cases import CreditCardUseCases
 from src.application.use_cases.financial_event_use_cases import FinancialEventUseCases
 from src.application.use_cases.purchase_use_cases import PurchaseUseCases
 from src.application.use_cases.installment_use_cases import InstallmentUseCases
+from src.application.use_cases.dashboard_layout_use_cases import DashboardLayoutUseCases
 from src.domain.services.credit_card_service import CreditCardService
 from src.domain.services.installment_service import InstallmentService
 from src.domain.services.monthly_summary_service import MonthlySummaryService
 from src.domain.services.category_breakdown_service import CategoryBreakdownService
 from src.domain.services.account_summary_service import AccountSummaryService
+from src.domain.services.chart_data_service import ChartDataService
 from src.presentation.windows.main_window import MainWindow
+from src.presentation.widgets.dashboard.chart_widget import configure_pyqtgraph_theme
 from src.presentation import theme
 
 
 def main():
     app = QApplication(sys.argv)
     app.setStyleSheet(theme.STYLESHEET)
+    configure_pyqtgraph_theme()
 
     try:
         conn = get_connection()
@@ -50,6 +55,7 @@ def main():
     purchase_repo = SQLitePurchaseRepository(conn)
     installment_plan_repo = SQLiteInstallmentPlanRepository(conn)
     installment_repo = SQLiteInstallmentRepository(conn)
+    dashboard_widget_repo = SQLiteDashboardWidgetRepository(conn)
 
     account_use_cases = AccountUseCases(account_repo)
     category_use_cases = CategoryUseCases(category_repo)
@@ -76,6 +82,23 @@ def main():
     category_breakdown_service = CategoryBreakdownService(financial_event_repo, purchase_repo)
     account_summary_service = AccountSummaryService(financial_event_repo, account_repo)
 
+    chart_data_service = ChartDataService(
+        financial_event_repository=financial_event_repo,
+        account_repository=account_repo,
+        category_repository=category_repo,
+        counterparty_repository=counterparty_repo,
+        credit_card_repository=credit_card_repo,
+        installment_repository=installment_repo,
+        installment_plan_repository=installment_plan_repo,
+        purchase_repository=purchase_repo,
+        monthly_summary_service=monthly_summary_service,
+        category_breakdown_service=category_breakdown_service,
+        account_summary_service=account_summary_service,
+        credit_card_service=credit_card_service,
+    )
+    dashboard_layout_use_cases = DashboardLayoutUseCases(dashboard_widget_repo)
+    dashboard_layout_use_cases.seed_default_layout_if_empty()
+
     window = MainWindow(
         account_use_cases,
         category_use_cases,
@@ -84,7 +107,8 @@ def main():
         financial_event_use_cases,
         purchase_use_cases,
         installment_use_cases,
-        monthly_summary_service,
+        dashboard_layout_use_cases,
+        chart_data_service,
         category_breakdown_service,
         account_summary_service,
     )

@@ -10,6 +10,23 @@ INCOME = "#1d9a6c"
 EXPENSE = "#e5484d"
 SELECTION = "#dbe4ff"
 
+# Fixed-order categorical palette for open-ended chart breakdowns (by category,
+# counterparty, credit card, account, ...). Order is the CVD-safety mechanism -
+# never cycle or reorder it. Series 9+ should fold into "Other" rather than
+# reusing a slot. Income-vs-expenses charts should keep using INCOME/EXPENSE
+# above instead of these slots, since that pairing is a reserved semantic, not
+# an open-ended category.
+CHART_CATEGORICAL = [
+    "#2a78d6",  # blue
+    "#008300",  # green
+    "#e87ba4",  # magenta
+    "#eda100",  # yellow
+    "#1baf7a",  # aqua
+    "#eb6834",  # orange
+    "#4a3aa7",  # violet
+    "#e34948",  # red
+]
+
 STYLESHEET = f"""
 * {{
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
@@ -168,5 +185,12 @@ QFrame#quickAddBar {{
     background: {SURFACE};
     border: 1px solid {BORDER};
     border-radius: 10px;
+}}
+
+QFrame#previewDrawer {{
+    background: {SURFACE};
+    border: 1px solid {BORDER};
+    border-radius: 10px;
+    padding: 10px;
 }}
 """

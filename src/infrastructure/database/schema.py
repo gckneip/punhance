@@ -99,6 +99,24 @@ def create_tables(conn):
             FOREIGN KEY(installment_plan_id) REFERENCES installment_plans(id)
         );
 
+        CREATE TABLE IF NOT EXISTS dashboard_widgets (
+            id TEXT PRIMARY KEY,
+            dashboard_id TEXT NOT NULL DEFAULT 'default',
+            kind TEXT NOT NULL,
+            title TEXT NOT NULL,
+            grid_row INTEGER NOT NULL,
+            grid_col INTEGER NOT NULL,
+            grid_row_span INTEGER NOT NULL DEFAULT 1,
+            grid_col_span INTEGER NOT NULL DEFAULT 1,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            config_json TEXT NOT NULL DEFAULT '{}',
+            source_preset_id TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_dashboard_widgets_dashboard_id ON dashboard_widgets(dashboard_id);
+
         CREATE INDEX IF NOT EXISTS idx_financial_events_event_date ON financial_events(event_date);
         CREATE INDEX IF NOT EXISTS idx_financial_events_account_id ON financial_events(account_id);
         CREATE INDEX IF NOT EXISTS idx_financial_events_category_id ON financial_events(category_id);

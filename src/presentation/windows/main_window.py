@@ -20,14 +20,15 @@ from src.application.dto.credit_card_dto import CreateCreditCardDTO
 from src.application.dto.financial_event_dto import CreateFinancialEventDTO
 from src.application.dto.purchase_dto import CreatePurchaseDTO, CreatePurchaseItemDTO
 from src.domain.entities.purchase import PaymentMethod
-from src.domain.services.monthly_summary_service import MonthlySummaryService
+from src.application.use_cases.dashboard_layout_use_cases import DashboardLayoutUseCases
+from src.domain.services.chart_data_service import ChartDataService
 from src.presentation.dialogs.account_dialog import AccountDialog
 from src.presentation.dialogs.category_dialog import CategoryDialog
 from src.presentation.dialogs.counterparty_dialog import CounterpartyDialog
 from src.presentation.dialogs.credit_card_dialog import CreditCardDialog
 from src.presentation.dialogs.purchase_dialog import PurchaseDialog
 from src.presentation.dialogs.event_dialog import EventDialog
-from src.presentation.widgets.dashboard_widget import DashboardWidget
+from src.presentation.widgets.dashboard.dashboard_grid_widget import DashboardGridWidget
 from src.presentation.widgets.installments_widget import InstallmentsWidget
 from src.presentation.widgets.category_breakdown_widget import CategoryBreakdownWidget
 from src.presentation.widgets.account_summary_widget import AccountSummaryWidget
@@ -44,7 +45,8 @@ class MainWindow(QMainWindow):
         financial_event_use_cases: FinancialEventUseCases,
         purchase_use_cases: PurchaseUseCases,
         installment_use_cases: InstallmentUseCases,
-        monthly_summary_service: MonthlySummaryService,
+        dashboard_layout_use_cases: DashboardLayoutUseCases,
+        chart_data_service: ChartDataService,
         category_breakdown_service=None,
         account_summary_service=None,
     ):
@@ -65,7 +67,9 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
 
-        self._dashboard = DashboardWidget(monthly_summary_service, financial_event_use_cases, purchase_use_cases)
+        self._dashboard = DashboardGridWidget(
+            dashboard_layout_use_cases, chart_data_service, financial_event_use_cases, purchase_use_cases
+        )
         self._dashboard.entry_added.connect(self._refresh_all)
         self._dashboard.edit_event_requested.connect(self._edit_event)
         self._tabs.insertTab(0, self._dashboard, icons.icon("fa6s.gauge-high"), "Dashboard")
@@ -573,6 +577,7 @@ class MainWindow(QMainWindow):
                 credit_card_id=data["credit_card_id"],
                 notes=data["notes"],
                 installment_count=data["installment_count"],
+                remainder_on_first=data["remainder_on_first"],
                 counterparty_id=data["counterparty_id"],
                 category_id=data["category_id"],
                 items=items,
@@ -653,6 +658,7 @@ class MainWindow(QMainWindow):
                 credit_card_id=data["credit_card_id"],
                 notes=data["notes"],
                 installment_count=data["installment_count"],
+                remainder_on_first=data["remainder_on_first"],
                 counterparty_id=data["counterparty_id"],
                 category_id=data["category_id"],
                 items=items,
@@ -837,6 +843,8 @@ class MainWindow(QMainWindow):
         purchases = self._purchase_use_cases.list_purchases()
         multi_category_event_ids = self._purchase_use_cases.get_multi_category_event_ids()
         credit_cards = self._credit_card_use_cases.list_cards()
+        installments_by_event = self._purchase_use_cases.get_multi_installment_map()
         self._dashboard.refresh(
-            events, accounts, categories, counterparties, purchases, multi_category_event_ids, credit_cards
+            events, accounts, categories, counterparties, purchases, multi_category_event_ids, credit_cards,
+            installments_by_event,
         )
