@@ -1,6 +1,6 @@
 import calendar
 import sqlite3
-from typing import List, Optional
+from typing import Dict, List, Optional
 from datetime import date, datetime
 from src.domain.entities.financial_event import FinancialEvent, EventType
 from src.domain.entities.purchase import Purchase, PaymentMethod
@@ -88,6 +88,7 @@ class PurchaseUseCases:
                     purchase_id=purchase.id,
                     total_amount=dto.total_amount,
                     installment_count=max(dto.installment_count, 1),
+                    remainder_on_first=dto.remainder_on_first,
                 )
                 self._plan_repo.save(plan, commit=False)
 
@@ -164,6 +165,7 @@ class PurchaseUseCases:
                 existing_plan is not None and (
                     existing_plan.installment_count != dto.installment_count
                     or existing_plan.total_amount != dto.total_amount
+                    or existing_plan.remainder_on_first != dto.remainder_on_first
                 )
             )
             if existing_plan is not None and plan_changed:
@@ -182,6 +184,7 @@ class PurchaseUseCases:
                     purchase_id=purchase.id,
                     total_amount=dto.total_amount,
                     installment_count=max(dto.installment_count, 1),
+                    remainder_on_first=dto.remainder_on_first,
                 )
                 self._plan_repo.save(new_plan, commit=False)
                 first_due_date = _add_one_month(dto.event_date)
@@ -265,6 +268,28 @@ class PurchaseUseCases:
                 result.add(p.financial_event_id)
         return result
 
+    def get_multi_installment_map(self) -> Dict[str, List[InstallmentDTO]]:
+        plans = self._plan_repo.find_all()
+        multi_plans = {p.id: p for p in plans if p.installment_count >= 2}
+        if not multi_plans:
+            return {}
+
+        installments_by_plan: Dict[str, list] = {}
+        for inst in self._installment_repo.find_all():
+            if inst.installment_plan_id in multi_plans:
+                installments_by_plan.setdefault(inst.installment_plan_id, []).append(inst)
+
+        purchases_by_id = {p.id: p for p in self._purchase_repo.find_all()}
+
+        result: Dict[str, List[InstallmentDTO]] = {}
+        for plan_id, plan in multi_plans.items():
+            purchase = purchases_by_id.get(plan.purchase_id)
+            insts = installments_by_plan.get(plan_id)
+            if purchase is None or not insts:
+                continue
+            result[purchase.financial_event_id] = [self._installment_to_dto(i) for i in insts]
+        return result
+
     def get_purchase_by_event(self, financial_event_id: str):
         purchase = self._purchase_repo.find_by_financial_event(financial_event_id)
         if purchase is None:
@@ -301,6 +326,7 @@ class PurchaseUseCases:
             "category_id": event.category_id if event else None,
             "items": [self._item_to_dto(i) for i in items],
             "installments": installments,
+            "remainder_on_first": plan.remainder_on_first if plan else False,
         }
 
     def _item_to_dto(self, item: PurchaseItem) -> PurchaseItemDTO:

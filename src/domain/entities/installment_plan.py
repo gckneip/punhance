@@ -11,6 +11,7 @@ class InstallmentPlan:
     installment_count: int
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: Optional[str] = None
+    remainder_on_first: bool = False
 
     def __post_init__(self):
         if self.created_at is None:

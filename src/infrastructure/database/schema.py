@@ -86,6 +86,7 @@ def create_tables(conn):
             total_amount REAL NOT NULL,
             installment_count INTEGER NOT NULL,
             created_at TEXT,
+            remainder_on_first INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY(purchase_id) REFERENCES purchases(id)
         );
 
@@ -196,3 +197,11 @@ def _migrate(conn):
         if "merchant_name" in purchase_columns:
             conn.execute("ALTER TABLE purchases DROP COLUMN merchant_name")
             conn.commit()
+
+    cursor = conn.execute("PRAGMA table_info(installment_plans)")
+    plan_columns = [row[1] for row in cursor.fetchall()]
+    if plan_columns and "remainder_on_first" not in plan_columns:
+        conn.execute(
+            "ALTER TABLE installment_plans ADD COLUMN remainder_on_first INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.commit()

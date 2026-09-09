@@ -11,14 +11,15 @@ class SQLiteInstallmentPlanRepository(InstallmentPlanRepository):
     def save(self, plan: InstallmentPlan, commit: bool = True) -> None:
         self._conn.execute(
             """INSERT OR REPLACE INTO installment_plans
-               (id, purchase_id, total_amount, installment_count, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
+               (id, purchase_id, total_amount, installment_count, created_at, remainder_on_first)
+               VALUES (?, ?, ?, ?, ?, ?)""",
             (
                 plan.id,
                 plan.purchase_id,
                 plan.total_amount,
                 plan.installment_count,
                 plan.created_at,
+                plan.remainder_on_first,
             ),
         )
         if commit:
@@ -61,4 +62,5 @@ class SQLiteInstallmentPlanRepository(InstallmentPlanRepository):
             total_amount=row["total_amount"],
             installment_count=row["installment_count"],
             created_at=row["created_at"],
+            remainder_on_first=bool(row["remainder_on_first"]),
         )

@@ -13,11 +13,12 @@ class InstallmentService:
     ) -> List[Installment]:
         installment_amount = round(plan.total_amount / plan.installment_count, 2)
         remainder = round(plan.total_amount - installment_amount * plan.installment_count, 2)
+        target_index = 0 if plan.remainder_on_first else plan.installment_count - 1
 
         installments = []
         for i in range(plan.installment_count):
             amount = installment_amount
-            if i == plan.installment_count - 1:
+            if i == target_index:
                 amount = round(amount + remainder, 2)
 
             total_months = first_due_date.month + i
