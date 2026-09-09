@@ -1,9 +1,9 @@
+from PySide6.QtGui import QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMenu,
     QTabWidget, QTableWidget, QTableWidgetItem,
     QLabel, QMessageBox, QDateEdit, QComboBox, QLineEdit, QAbstractItemView,
 )
-from PySide6.QtGui import QKeySequence, QShortcut
 from datetime import date, timedelta
 
 from src.application.use_cases.account_use_cases import AccountUseCases
@@ -13,12 +13,14 @@ from src.application.use_cases.credit_card_use_cases import CreditCardUseCases
 from src.application.use_cases.financial_event_use_cases import FinancialEventUseCases
 from src.application.use_cases.purchase_use_cases import PurchaseUseCases
 from src.application.use_cases.installment_use_cases import InstallmentUseCases
+from src.application.use_cases.recurring_event_use_cases import RecurringEventUseCases
 from src.application.dto.account_dto import CreateAccountDTO
 from src.application.dto.category_dto import CreateCategoryDTO
 from src.application.dto.counterparty_dto import CreateCounterpartyDTO
 from src.application.dto.credit_card_dto import CreateCreditCardDTO
 from src.application.dto.financial_event_dto import CreateFinancialEventDTO
 from src.application.dto.purchase_dto import CreatePurchaseDTO, CreatePurchaseItemDTO
+from src.application.dto.recurring_event_dto import CreateRecurringEventDTO
 from src.domain.entities.purchase import PaymentMethod
 from src.application.use_cases.dashboard_layout_use_cases import DashboardLayoutUseCases
 from src.domain.services.chart_data_service import ChartDataService
@@ -28,6 +30,7 @@ from src.presentation.dialogs.counterparty_dialog import CounterpartyDialog
 from src.presentation.dialogs.credit_card_dialog import CreditCardDialog
 from src.presentation.dialogs.purchase_dialog import PurchaseDialog
 from src.presentation.dialogs.event_dialog import EventDialog
+from src.presentation.dialogs.recurring_event_dialog import RecurringEventDialog
 from src.presentation.widgets.dashboard.dashboard_grid_widget import DashboardGridWidget
 from src.presentation.widgets.installments_widget import InstallmentsWidget
 from src.presentation.widgets.category_breakdown_widget import CategoryBreakdownWidget
@@ -45,6 +48,7 @@ class MainWindow(QMainWindow):
         financial_event_use_cases: FinancialEventUseCases,
         purchase_use_cases: PurchaseUseCases,
         installment_use_cases: InstallmentUseCases,
+        recurring_event_use_cases: RecurringEventUseCases,
         dashboard_layout_use_cases: DashboardLayoutUseCases,
         chart_data_service: ChartDataService,
         category_breakdown_service=None,
@@ -58,6 +62,7 @@ class MainWindow(QMainWindow):
         self._financial_event_use_cases = financial_event_use_cases
         self._purchase_use_cases = purchase_use_cases
         self._installment_use_cases = installment_use_cases
+        self._recurring_event_use_cases = recurring_event_use_cases
         self._category_breakdown_service = category_breakdown_service
         self._account_summary_service = account_summary_service
 
@@ -113,20 +118,12 @@ class MainWindow(QMainWindow):
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
 
-        self._btn_add_event = QPushButton("+ Event")
-        self._btn_add_event.setObjectName("primaryButton")
-        self._btn_add_event.setIcon(icons.icon("fa6s.circle-plus", color="white"))
-        self._btn_add_event.setShortcut(QKeySequence("Ctrl+N"))
-        self._btn_add_event.setToolTip("Add a financial event (Ctrl+N)")
-        self._btn_add_event.clicked.connect(self._add_event)
-        toolbar.addWidget(self._btn_add_event)
-
-        self._btn_add_purchase = QPushButton("+ Purchase")
-        self._btn_add_purchase.setIcon(icons.icon("fa6s.cart-shopping"))
-        self._btn_add_purchase.setShortcut(QKeySequence("Ctrl+Shift+N"))
-        self._btn_add_purchase.setToolTip("Add a detailed purchase with items/installments (Ctrl+Shift+N)")
-        self._btn_add_purchase.clicked.connect(self._add_purchase)
-        toolbar.addWidget(self._btn_add_purchase)
+        self._btn_add = QPushButton("+ Add")
+        self._btn_add.setObjectName("primaryButton")
+        self._btn_add.setIcon(icons.icon("fa6s.circle-plus", color="white"))
+        self._btn_add.setToolTip("Create a new event, purchase, recurring event, or bank transfer")
+        toolbar.addWidget(self._btn_add)
+        self._build_add_menu()
 
         toolbar.addStretch()
         layout.addLayout(toolbar)
@@ -140,8 +137,28 @@ class MainWindow(QMainWindow):
         self._build_counterparties_tab()
         self._build_credit_cards_tab()
         self._build_installments_tab()
+        self._build_recurring_events_tab()
         self._build_category_breakdown_tab()
         self._build_account_summary_tab()
+
+    def _build_add_menu(self):
+        menu = QMenu(self)
+
+        action_event = menu.addAction(icons.icon("fa6s.circle-plus"), "Create Event")
+        action_event.setShortcut(QKeySequence("Ctrl+N"))
+        action_event.triggered.connect(self._add_event)
+
+        action_purchase = menu.addAction(icons.icon("fa6s.cart-shopping"), "Create Purchase")
+        action_purchase.setShortcut(QKeySequence("Ctrl+Shift+N"))
+        action_purchase.triggered.connect(self._add_purchase)
+
+        action_recurring = menu.addAction(icons.icon("fa6s.arrows-rotate"), "Create Recurring Event")
+        action_recurring.triggered.connect(self._add_recurring_event)
+
+        action_transfer = menu.addAction(icons.icon("fa6s.right-left"), "Create Bank Transfer")
+        action_transfer.triggered.connect(self._add_transfer)
+
+        self._btn_add.setMenu(menu)
 
     def _build_events_tab(self):
         tab = QWidget()
@@ -313,6 +330,31 @@ class MainWindow(QMainWindow):
             self._installment_use_cases,
         )
         self._tabs.addTab(self._installments_widget, icons.icon("fa6s.calendar-days"), "Installments")
+
+    def _build_recurring_events_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        btn_row = QHBoxLayout()
+        btn = QPushButton("+ Recurring Event")
+        btn.setIcon(icons.icon("fa6s.arrows-rotate"))
+        btn.clicked.connect(self._add_recurring_event)
+        btn_row.addWidget(btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        self._recurring_events_table = QTableWidget()
+        self._recurring_events_table.setColumnCount(9)
+        self._recurring_events_table.setHorizontalHeaderLabels(
+            ["Description", "Amount", "Frequency", "Anchor", "Start", "End", "Active", "ID", "Actions"]
+        )
+        self._recurring_events_table.horizontalHeader().setStretchLastSection(True)
+        self._recurring_events_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._recurring_events_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._recurring_events_table.setAlternatingRowColors(True)
+        layout.addWidget(self._recurring_events_table)
+
+        self._tabs.addTab(tab, icons.icon("fa6s.arrows-rotate"), "Recurring Events")
 
     def _build_category_breakdown_tab(self):
         if self._category_breakdown_service:
@@ -504,12 +546,111 @@ class MainWindow(QMainWindow):
             else:
                 self._refresh_all()
 
+    def _add_recurring_event(self):
+        accounts = self._account_use_cases.list_accounts()
+        categories = self._category_use_cases.list_categories()
+        counterparties = self._counterparty_use_cases.list_counterparties()
+        credit_cards = self._credit_card_use_cases.list_cards()
+
+        dialog = RecurringEventDialog(accounts, categories, counterparties, credit_cards, self)
+        if dialog.exec():
+            data = dialog.get_data()
+            dto = CreateRecurringEventDTO(**data)
+            self._recurring_event_use_cases.create_recurring_event(dto)
+            self._refresh_all()
+
+    def _edit_recurring_event(self, recurring_event_id):
+        templates = {r.id: r for r in self._recurring_event_use_cases.list_recurring_events()}
+        template = templates.get(recurring_event_id)
+        if template is None:
+            return
+
+        accounts = self._account_use_cases.list_accounts()
+        categories = self._category_use_cases.list_categories()
+        counterparties = self._counterparty_use_cases.list_counterparties()
+        credit_cards = self._credit_card_use_cases.list_cards()
+
+        dialog = RecurringEventDialog(
+            accounts, categories, counterparties, credit_cards, self, recurring_event=template
+        )
+        if dialog.exec():
+            data = dialog.get_data()
+            dto = CreateRecurringEventDTO(**data)
+            self._recurring_event_use_cases.update_recurring_event(recurring_event_id, dto)
+            self._refresh_all()
+
+    def _delete_recurring_event(self, recurring_event_id):
+        reply = QMessageBox.question(
+            self,
+            "Delete Recurring Event",
+            "Delete this recurring event? Already-confirmed events are kept; "
+            "any pending (unconfirmed) occurrences will disappear.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        self._recurring_event_use_cases.delete_recurring_event(recurring_event_id)
+        self._refresh_all()
+
+    def _recurring_anchor_label(self, r) -> str:
+        if r.frequency == "weekly" and r.weekday is not None:
+            names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+            return names[r.weekday]
+        if r.frequency == "monthly" and r.day_of_month is not None:
+            return f"Day {r.day_of_month}"
+        if r.frequency == "yearly" and r.month is not None and r.day_of_month is not None:
+            return f"{r.month:02d}/{r.day_of_month:02d}"
+        return ""
+
+    def _confirm_occurrence(self, occurrence):
+        accounts = self._account_use_cases.list_accounts()
+        categories = self._category_use_cases.list_categories()
+        counterparties = self._counterparty_use_cases.list_counterparties()
+
+        dialog = EventDialog(accounts, categories, counterparties, self, event=occurrence)
+        if dialog.exec():
+            data = dialog.get_data()
+            dto = CreateFinancialEventDTO(credit_card_id=occurrence.credit_card_id, **data)
+            self._recurring_event_use_cases.confirm_occurrence(
+                occurrence.recurring_event_id, occurrence.occurrence_date, dto
+            )
+            self._refresh_all()
+
+    def _skip_occurrence(self, recurring_event_id, occurrence_date):
+        reply = QMessageBox.question(
+            self,
+            "Skip Occurrence",
+            "Skip this occurrence? It won't be shown again.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        self._recurring_event_use_cases.skip_occurrence(recurring_event_id, occurrence_date)
+        self._refresh_all()
+
     def _add_event(self):
         accounts = self._account_use_cases.list_accounts()
         categories = self._category_use_cases.list_categories()
         counterparties = self._counterparty_use_cases.list_counterparties()
 
         dialog = EventDialog(accounts, categories, counterparties, self)
+        if dialog.exec():
+            data = dialog.get_data()
+            dto = CreateFinancialEventDTO(**data)
+            self._financial_event_use_cases.create_event(dto)
+            self._refresh_all()
+
+    def _add_transfer(self):
+        accounts = self._account_use_cases.list_accounts()
+        categories = self._category_use_cases.list_categories()
+        counterparties = self._counterparty_use_cases.list_counterparties()
+
+        dialog = EventDialog(accounts, categories, counterparties, self)
+        index = dialog.type_combo.findText("transfer")
+        if index >= 0:
+            dialog.type_combo.setCurrentIndex(index)
         if dialog.exec():
             data = dialog.get_data()
             dto = CreateFinancialEventDTO(**data)
@@ -610,6 +751,7 @@ class MainWindow(QMainWindow):
             self._events_table.item(r, 9).text()
             for r in rows
             if self._events_table.item(r, 9) is not None
+            and not self._events_table.item(r, 9).text().startswith("virtual:")
         ]
         if not event_ids:
             return
@@ -675,6 +817,7 @@ class MainWindow(QMainWindow):
         self._refresh_counterparties()
         self._refresh_credit_cards()
         self._refresh_installments()
+        self._refresh_recurring_events()
         self._refresh_dashboard()
         if hasattr(self, '_category_breakdown_widget'):
             self._category_breakdown_widget.refresh()
@@ -718,15 +861,20 @@ class MainWindow(QMainWindow):
         description = self._filter_description.text().strip() or None
         category_id = self._filter_category.currentData()
         account_id = self._filter_account.currentData()
+        # date_to is an exclusive upper bound in the repository/service layer, but
+        # the "To" date picker is meant to be inclusive of that whole day.
+        date_to_exclusive = date_to + timedelta(days=1)
 
         events = self._financial_event_use_cases.list_events(
             date_from=date_from,
-            # date_to is an exclusive upper bound in the repository, but the "To"
-            # date picker is meant to be inclusive of that whole day.
-            date_to=date_to + timedelta(days=1),
+            date_to=date_to_exclusive,
             description=description,
             category_id=category_id,
             account_id=account_id,
+        )
+        occurrences = self._recurring_event_use_cases.get_pending_occurrences(
+            date_from, date_to_exclusive,
+            category_id=category_id, account_id=account_id, description=description,
         )
 
         accounts_map = {a.id: a.name for a in self._account_use_cases.list_accounts()}
@@ -734,35 +882,98 @@ class MainWindow(QMainWindow):
         counterparties_map = {c.id: c.name for c in self._counterparty_use_cases.list_counterparties()}
         multi_category_event_ids = self._purchase_use_cases.get_multi_category_event_ids()
 
-        self._events_table.setRowCount(len(events))
-        for i, e in enumerate(events):
-            self._events_table.setItem(i, 0, QTableWidgetItem(e.event_date.isoformat()))
-            self._events_table.setItem(i, 1, QTableWidgetItem(e.event_type))
-            self._events_table.setItem(i, 2, QTableWidgetItem(e.description))
-            self._events_table.setItem(i, 3, QTableWidgetItem(f"{e.currency} {e.amount:.2f}"))
-            self._events_table.setItem(i, 4, QTableWidgetItem(e.currency))
-            if e.category_id is None and e.id in multi_category_event_ids:
-                cat_name = "Multiple"
+        rows = [(e.event_date, False, e) for e in events]
+        rows += [(o.occurrence_date, True, o) for o in occurrences]
+        rows.sort(key=lambda r: r[0], reverse=True)
+
+        self._events_table.setRowCount(len(rows))
+        for i, (_, is_virtual, payload) in enumerate(rows):
+            if is_virtual:
+                self._populate_virtual_event_row(i, payload, categories_map, accounts_map, counterparties_map)
             else:
-                cat_name = categories_map.get(e.category_id, str(e.category_id or ""))
-            self._events_table.setItem(i, 5, QTableWidgetItem(cat_name))
-            if e.event_type == "transfer" and e.destination_account_id:
-                src = accounts_map.get(e.account_id, str(e.account_id or ""))
-                dst = accounts_map.get(e.destination_account_id, str(e.destination_account_id or ""))
-                acc_display = f"{src} → {dst}"
-            else:
-                acc_display = accounts_map.get(e.account_id, str(e.account_id or ""))
-            self._events_table.setItem(i, 6, QTableWidgetItem(acc_display))
-            cp_name = counterparties_map.get(e.counterparty_id, str(e.counterparty_id or ""))
-            self._events_table.setItem(i, 7, QTableWidgetItem(cp_name))
-            self._events_table.setItem(i, 8, QTableWidgetItem(e.notes or ""))
-            self._events_table.setItem(i, 9, QTableWidgetItem(e.id))
-            self._events_table.setCellWidget(i, 10, self._make_actions_widget([
-                ("Edit", "fa6s.pen", lambda _, event_id=e.id: self._edit_event(event_id)),
-                ("Delete", "fa6s.trash", lambda _, event_id=e.id: self._delete_event(event_id), theme.EXPENSE),
-            ]))
+                self._populate_real_event_row(
+                    i, payload, categories_map, accounts_map, counterparties_map, multi_category_event_ids
+                )
 
         self._events_table.resizeColumnsToContents()
+
+    def _populate_real_event_row(self, i, e, categories_map, accounts_map, counterparties_map, multi_category_event_ids):
+        self._events_table.setItem(i, 0, QTableWidgetItem(e.event_date.isoformat()))
+        self._events_table.setItem(i, 1, QTableWidgetItem(e.event_type))
+        self._events_table.setItem(i, 2, QTableWidgetItem(e.description))
+        self._events_table.setItem(i, 3, QTableWidgetItem(f"{e.currency} {e.amount:.2f}"))
+        self._events_table.setItem(i, 4, QTableWidgetItem(e.currency))
+        if e.category_id is None and e.id in multi_category_event_ids:
+            cat_name = "Multiple"
+        else:
+            cat_name = categories_map.get(e.category_id, str(e.category_id or ""))
+        self._events_table.setItem(i, 5, QTableWidgetItem(cat_name))
+        if e.event_type == "transfer" and e.destination_account_id:
+            src = accounts_map.get(e.account_id, str(e.account_id or ""))
+            dst = accounts_map.get(e.destination_account_id, str(e.destination_account_id or ""))
+            acc_display = f"{src} → {dst}"
+        else:
+            acc_display = accounts_map.get(e.account_id, str(e.account_id or ""))
+        self._events_table.setItem(i, 6, QTableWidgetItem(acc_display))
+        cp_name = counterparties_map.get(e.counterparty_id, str(e.counterparty_id or ""))
+        self._events_table.setItem(i, 7, QTableWidgetItem(cp_name))
+        self._events_table.setItem(i, 8, QTableWidgetItem(e.notes or ""))
+        self._events_table.setItem(i, 9, QTableWidgetItem(e.id))
+        self._events_table.setCellWidget(i, 10, self._make_actions_widget([
+            ("Edit", "fa6s.pen", lambda _, event_id=e.id: self._edit_event(event_id)),
+            ("Delete", "fa6s.trash", lambda _, event_id=e.id: self._delete_event(event_id), theme.EXPENSE),
+        ]))
+
+    def _populate_virtual_event_row(self, i, o, categories_map, accounts_map, counterparties_map):
+        italic_font = QFont()
+        italic_font.setItalic(True)
+
+        def _item(text):
+            item = QTableWidgetItem(text)
+            item.setFont(italic_font)
+            return item
+
+        self._events_table.setItem(i, 0, _item(o.occurrence_date.isoformat()))
+        self._events_table.setItem(i, 1, _item(f"{o.event_type} (recurring)"))
+        self._events_table.setItem(i, 2, _item(o.description))
+        self._events_table.setItem(i, 3, _item(f"{o.currency} {o.amount:.2f}"))
+        self._events_table.setItem(i, 4, _item(o.currency))
+        self._events_table.setItem(i, 5, _item(categories_map.get(o.category_id, str(o.category_id or ""))))
+        self._events_table.setItem(i, 6, _item(accounts_map.get(o.account_id, str(o.account_id or ""))))
+        self._events_table.setItem(i, 7, _item(counterparties_map.get(o.counterparty_id, str(o.counterparty_id or ""))))
+        self._events_table.setItem(i, 8, _item(o.notes or ""))
+        self._events_table.setItem(
+            i, 9, _item(f"virtual:{o.recurring_event_id}:{o.occurrence_date.isoformat()}")
+        )
+        self._events_table.setCellWidget(i, 10, self._make_actions_widget([
+            ("Confirm", "fa6s.check", lambda _, occ=o: self._confirm_occurrence(occ), theme.INCOME),
+            (
+                "Skip", "fa6s.forward-step",
+                lambda _, rid=o.recurring_event_id, od=o.occurrence_date: self._skip_occurrence(rid, od),
+                theme.EXPENSE,
+            ),
+        ]))
+
+    def _refresh_recurring_events(self):
+        templates = self._recurring_event_use_cases.list_recurring_events()
+        self._recurring_events_table.setRowCount(len(templates))
+        for i, r in enumerate(templates):
+            self._recurring_events_table.setItem(i, 0, QTableWidgetItem(r.description))
+            self._recurring_events_table.setItem(i, 1, QTableWidgetItem(f"{r.currency} {r.amount:.2f}"))
+            freq_label = r.frequency.capitalize() if r.interval == 1 else f"Every {r.interval} {r.frequency}s"
+            self._recurring_events_table.setItem(i, 2, QTableWidgetItem(freq_label))
+            self._recurring_events_table.setItem(i, 3, QTableWidgetItem(self._recurring_anchor_label(r)))
+            self._recurring_events_table.setItem(i, 4, QTableWidgetItem(r.start_date.isoformat()))
+            self._recurring_events_table.setItem(
+                i, 5, QTableWidgetItem(r.end_date.isoformat() if r.end_date else "")
+            )
+            self._recurring_events_table.setItem(i, 6, QTableWidgetItem("Yes" if r.is_active else "No"))
+            self._recurring_events_table.setItem(i, 7, QTableWidgetItem(r.id))
+            self._recurring_events_table.setCellWidget(i, 8, self._make_actions_widget([
+                ("Edit", "fa6s.pen", lambda _, rid=r.id: self._edit_recurring_event(rid)),
+                ("Delete", "fa6s.trash", lambda _, rid=r.id: self._delete_recurring_event(rid), theme.EXPENSE),
+            ]))
+        self._recurring_events_table.resizeColumnsToContents()
 
     def _refresh_accounts(self):
         accounts = self._account_use_cases.list_accounts()
