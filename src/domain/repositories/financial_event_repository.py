@@ -28,6 +28,7 @@ class FinancialEventRepository(ABC):
         destination_account_id: Optional[str] = None,
         counterparty_id: Optional[str] = None,
         description: Optional[str] = None,
+        recurring_event_id: Optional[str] = None,
     ) -> List[FinancialEvent]:
         pass
 

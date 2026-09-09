@@ -12,8 +12,8 @@ class SQLiteFinancialEventRepository(FinancialEventRepository):
     def save(self, event: FinancialEvent, commit: bool = True) -> None:
         self._conn.execute(
             """INSERT OR REPLACE INTO financial_events
-               (id, event_type, event_date, description, amount, category_id, account_id, destination_account_id, credit_card_id, counterparty_id, currency, notes, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (id, event_type, event_date, description, amount, category_id, account_id, destination_account_id, credit_card_id, counterparty_id, currency, notes, recurring_event_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 event.id,
                 event.event_type.value,
@@ -27,6 +27,7 @@ class SQLiteFinancialEventRepository(FinancialEventRepository):
                 event.counterparty_id,
                 event.currency,
                 event.notes,
+                event.recurring_event_id,
                 event.created_at,
                 event.updated_at,
             ),
@@ -63,6 +64,7 @@ class SQLiteFinancialEventRepository(FinancialEventRepository):
         destination_account_id: Optional[str] = None,
         counterparty_id: Optional[str] = None,
         description: Optional[str] = None,
+        recurring_event_id: Optional[str] = None,
     ) -> List[FinancialEvent]:
         query = "SELECT * FROM financial_events WHERE 1=1"
         params = []
@@ -92,6 +94,9 @@ class SQLiteFinancialEventRepository(FinancialEventRepository):
         if description:
             query += " AND description LIKE ?"
             params.append(f"%{description}%")
+        if recurring_event_id:
+            query += " AND recurring_event_id = ?"
+            params.append(recurring_event_id)
 
         query += " ORDER BY event_date DESC, created_at DESC"
 
@@ -116,6 +121,7 @@ class SQLiteFinancialEventRepository(FinancialEventRepository):
             counterparty_id=row["counterparty_id"],
             currency=row["currency"],
             notes=row["notes"],
+            recurring_event_id=row["recurring_event_id"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

@@ -80,6 +80,17 @@ DEFAULT_PRESETS = [
         },
     ),
     PresetDefinition(
+        preset_id="upcoming_recurring_events",
+        title="Upcoming Recurring Events (Next 30 Days)",
+        kind=DashboardWidgetKind.GENERIC,
+        default_row_span=3,
+        default_col_span=6,
+        config={
+            "chart_type": "table", "data_source": "upcoming_recurring_events",
+            "days_ahead": 30, "filters": {},
+        },
+    ),
+    PresetDefinition(
         preset_id="credit_card_utilization",
         title="Credit Card Utilization",
         kind=DashboardWidgetKind.GENERIC,

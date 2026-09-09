@@ -81,6 +81,13 @@ def _build_table_content(title: str, config: dict, chart_data_service: ChartData
         )
         return _build_upcoming_installments_table(rows)
 
+    if config.get("data_source") == "upcoming_recurring_events":
+        filters = ChartFilters.from_dict(config.get("filters"))
+        rows = chart_data_service.get_upcoming_recurring_occurrences(
+            days_ahead=config.get("days_ahead", 30), filters=filters,
+        )
+        return _build_upcoming_recurring_table(rows)
+
     metrics = [MetricType(m) for m in config["metrics"]]
     group_by = GroupByDimension(config["group_by"])
     date_range = DateRangeSpec.from_dict(config["date_range"])
@@ -96,6 +103,18 @@ def _build_upcoming_installments_table(rows) -> QTableWidget:
         table.setItem(i, 0, QTableWidgetItem(row.due_date.isoformat()))
         table.setItem(i, 1, QTableWidgetItem(f"{row.description} ({row.installment_number}/{row.installment_count})"))
         table.setItem(i, 2, QTableWidgetItem(f"R$ {row.amount:.2f}"))
+    table.resizeColumnsToContents()
+    return table
+
+
+def _build_upcoming_recurring_table(rows) -> QTableWidget:
+    table = _new_table(["Date", "Description", "Amount", "Frequency"])
+    table.setRowCount(len(rows))
+    for i, row in enumerate(rows):
+        table.setItem(i, 0, QTableWidgetItem(row.occurrence_date.isoformat()))
+        table.setItem(i, 1, QTableWidgetItem(row.description))
+        table.setItem(i, 2, QTableWidgetItem(f"R$ {row.amount:.2f}"))
+        table.setItem(i, 3, QTableWidgetItem(row.frequency_label))
     table.resizeColumnsToContents()
     return table
 

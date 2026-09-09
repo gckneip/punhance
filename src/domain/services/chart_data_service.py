@@ -13,10 +13,12 @@ from src.domain.repositories.financial_event_repository import FinancialEventRep
 from src.domain.repositories.installment_plan_repository import InstallmentPlanRepository
 from src.domain.repositories.installment_repository import InstallmentRepository
 from src.domain.repositories.purchase_repository import PurchaseRepository
+from src.domain.repositories.recurring_event_repository import RecurringEventRepository
 from src.domain.services.account_summary_service import AccountSummaryService
 from src.domain.services.category_breakdown_service import CategoryBreakdownService
 from src.domain.services.credit_card_service import CreditCardService
 from src.domain.services.monthly_summary_service import MonthlySummaryService
+from src.domain.services.recurring_event_service import RecurringEventService
 
 INCOME_TYPES = (EventType.INCOME, EventType.REFUND)
 EXPENSE_TYPES = (
@@ -146,6 +148,15 @@ class UpcomingInstallmentRow:
 
 
 @dataclass
+class UpcomingRecurringOccurrenceRow:
+    occurrence_date: date
+    description: str
+    amount: float
+    recurring_event_id: str
+    frequency_label: str
+
+
+@dataclass
 class CreditCardUtilizationRow:
     credit_card_id: str
     credit_card_name: str
@@ -174,6 +185,16 @@ def _month_range(date_from: date, date_to: date):
         cursor = _add_one_month(cursor)
 
 
+_FREQUENCY_SINGULAR = {"daily": "day", "weekly": "week", "monthly": "month", "yearly": "year"}
+
+
+def _frequency_label(rule) -> str:
+    unit = rule.frequency.value
+    if rule.interval == 1:
+        return unit.capitalize()
+    return f"Every {rule.interval} {_FREQUENCY_SINGULAR[unit]}s"
+
+
 class ChartDataService:
     def __init__(
         self,
@@ -185,10 +206,12 @@ class ChartDataService:
         installment_repository: InstallmentRepository,
         installment_plan_repository: InstallmentPlanRepository,
         purchase_repository: PurchaseRepository,
+        recurring_event_repository: RecurringEventRepository,
         monthly_summary_service: MonthlySummaryService,
         category_breakdown_service: CategoryBreakdownService,
         account_summary_service: AccountSummaryService,
         credit_card_service: CreditCardService,
+        recurring_event_service: RecurringEventService,
     ):
         self._financial_event_repository = financial_event_repository
         self._account_repository = account_repository
@@ -198,10 +221,12 @@ class ChartDataService:
         self._installment_repository = installment_repository
         self._installment_plan_repository = installment_plan_repository
         self._purchase_repository = purchase_repository
+        self._recurring_event_repository = recurring_event_repository
         self._monthly_summary_service = monthly_summary_service
         self._category_breakdown_service = category_breakdown_service
         self._account_summary_service = account_summary_service
         self._credit_card_service = credit_card_service
+        self._recurring_event_service = recurring_event_service
 
     def resolve_date_range(
         self, spec: DateRangeSpec, today: Optional[date] = None
@@ -361,6 +386,36 @@ class ChartDataService:
             ))
 
         rows.sort(key=lambda r: r.due_date)
+        return rows
+
+    def get_upcoming_recurring_occurrences(
+        self, days_ahead: int = 30, filters: Optional[ChartFilters] = None
+    ) -> List[UpcomingRecurringOccurrenceRow]:
+        today = date.today()
+        date_to = today + timedelta(days=days_ahead + 1)
+        rules = self._recurring_event_repository.find_all(is_active=True)
+
+        rows: List[UpcomingRecurringOccurrenceRow] = []
+        for rule in rules:
+            if not self._matches_filters(rule, filters):
+                continue
+            confirmed = {
+                e.event_date for e in self._financial_event_repository.find_all(recurring_event_id=rule.id)
+            }
+            skipped = set(self._recurring_event_repository.find_skips(rule.id))
+            pending_dates = self._recurring_event_service.compute_pending_occurrences(
+                rule, today, date_to, confirmed, skipped
+            )
+            for occurrence_date in pending_dates:
+                rows.append(UpcomingRecurringOccurrenceRow(
+                    occurrence_date=occurrence_date,
+                    description=rule.description,
+                    amount=rule.amount,
+                    recurring_event_id=rule.id,
+                    frequency_label=_frequency_label(rule),
+                ))
+
+        rows.sort(key=lambda r: r.occurrence_date)
         return rows
 
     def get_credit_card_utilization(

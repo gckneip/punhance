@@ -118,6 +118,48 @@ def create_tables(conn):
 
         CREATE INDEX IF NOT EXISTS idx_dashboard_widgets_dashboard_id ON dashboard_widgets(dashboard_id);
 
+        CREATE TABLE IF NOT EXISTS recurring_events (
+            id TEXT PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            description TEXT NOT NULL,
+            amount REAL NOT NULL,
+            frequency TEXT NOT NULL,
+            interval INTEGER NOT NULL DEFAULT 1,
+            day_of_month INTEGER,
+            weekday INTEGER,
+            month INTEGER,
+            start_date TEXT NOT NULL,
+            end_date TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            category_id TEXT,
+            account_id TEXT,
+            destination_account_id TEXT,
+            credit_card_id TEXT,
+            counterparty_id TEXT,
+            currency TEXT NOT NULL DEFAULT 'BRL',
+            notes TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            FOREIGN KEY(category_id) REFERENCES categories(id),
+            FOREIGN KEY(account_id) REFERENCES accounts(id),
+            FOREIGN KEY(destination_account_id) REFERENCES accounts(id),
+            FOREIGN KEY(credit_card_id) REFERENCES credit_cards(id),
+            FOREIGN KEY(counterparty_id) REFERENCES counterparties(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS recurring_event_skips (
+            id TEXT PRIMARY KEY,
+            recurring_event_id TEXT NOT NULL,
+            occurrence_date TEXT NOT NULL,
+            created_at TEXT,
+            UNIQUE(recurring_event_id, occurrence_date),
+            FOREIGN KEY(recurring_event_id) REFERENCES recurring_events(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_recurring_events_is_active ON recurring_events(is_active);
+        CREATE INDEX IF NOT EXISTS idx_recurring_events_start_date ON recurring_events(start_date);
+        CREATE INDEX IF NOT EXISTS idx_recurring_event_skips_recurring_event_id ON recurring_event_skips(recurring_event_id);
+
         CREATE INDEX IF NOT EXISTS idx_financial_events_event_date ON financial_events(event_date);
         CREATE INDEX IF NOT EXISTS idx_financial_events_account_id ON financial_events(account_id);
         CREATE INDEX IF NOT EXISTS idx_financial_events_category_id ON financial_events(category_id);
@@ -151,6 +193,10 @@ def create_tables(conn):
         "CREATE INDEX IF NOT EXISTS idx_purchases_counterparty_id "
         "ON purchases(counterparty_id)"
     )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_financial_events_recurring_event_id "
+        "ON financial_events(recurring_event_id)"
+    )
     conn.commit()
 
 
@@ -179,6 +225,11 @@ def _migrate(conn):
     if "credit_card_id" not in columns:
         conn.execute(
             "ALTER TABLE financial_events ADD COLUMN credit_card_id TEXT"
+        )
+        conn.commit()
+    if "recurring_event_id" not in columns:
+        conn.execute(
+            "ALTER TABLE financial_events ADD COLUMN recurring_event_id TEXT"
         )
         conn.commit()
 

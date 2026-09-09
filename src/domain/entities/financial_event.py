@@ -29,6 +29,7 @@ class FinancialEvent:
     counterparty_id: Optional[str] = None
     currency: str = "BRL"
     notes: Optional[str] = None
+    recurring_event_id: Optional[str] = None
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
