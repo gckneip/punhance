@@ -1,7 +1,7 @@
 from PySide6.QtGui import QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMenu,
-    QTableWidget, QTableWidgetItem,
+    QTableWidget, QTableWidgetItem, QFileDialog,
     QLabel, QMessageBox, QDateEdit, QComboBox, QLineEdit, QAbstractItemView,
 )
 from datetime import date, timedelta
@@ -34,6 +34,10 @@ from src.presentation.dialogs.purchase_dialog import PurchaseDialog
 from src.presentation.dialogs.event_dialog import EventDialog
 from src.presentation.dialogs.recurring_event_dialog import RecurringEventDialog
 from src.presentation.dialogs.settings_dialog import SettingsDialog
+from src.presentation.dialogs.homebank_import_dialog import HomeBankImportPreviewDialog
+from src.presentation.dialogs.homebank_export_dialog import HomeBankExportDialog
+from src.infrastructure.homebank.xhb_reader import XhbParseError
+from src.application.dto.homebank_dto import HomeBankExportOptionsDTO
 from src.presentation.widgets.dashboard.dashboard_grid_widget import DashboardGridWidget
 from src.presentation.widgets.installments_widget import InstallmentsWidget
 from src.presentation.widgets.category_breakdown_widget import CategoryBreakdownWidget
@@ -58,6 +62,8 @@ class MainWindow(QMainWindow):
         chart_data_service: ChartDataService,
         category_breakdown_service=None,
         account_summary_service=None,
+        homebank_import_use_cases=None,
+        homebank_export_use_cases=None,
     ):
         super().__init__()
         self._account_use_cases = account_use_cases
@@ -71,6 +77,8 @@ class MainWindow(QMainWindow):
         self._app_settings_use_cases = app_settings_use_cases
         self._category_breakdown_service = category_breakdown_service
         self._account_summary_service = account_summary_service
+        self._homebank_import_use_cases = homebank_import_use_cases
+        self._homebank_export_use_cases = homebank_export_use_cases
 
         self.setWindowTitle("Personal Finance Manager")
         self.setWindowIcon(icons.icon("fa6s.sack-dollar", color=theme.PRIMARY))
@@ -134,6 +142,13 @@ class MainWindow(QMainWindow):
 
         toolbar.addStretch()
 
+        self._btn_data = QPushButton()
+        self._btn_data.setIcon(icons.icon("fa6s.file-import"))
+        self._btn_data.setToolTip("Import / Export")
+        self._btn_data.setFixedWidth(36)
+        toolbar.addWidget(self._btn_data)
+        self._build_data_menu()
+
         self._btn_settings = QPushButton()
         self._btn_settings.setIcon(icons.icon("fa6s.gear"))
         self._btn_settings.setToolTip("Settings")
@@ -174,6 +189,17 @@ class MainWindow(QMainWindow):
         action_transfer.triggered.connect(self._add_transfer)
 
         self._btn_add.setMenu(menu)
+
+    def _build_data_menu(self):
+        menu = QMenu(self)
+
+        action_import = menu.addAction(icons.icon("fa6s.file-import"), "Import from HomeBank...")
+        action_import.triggered.connect(self._import_homebank)
+
+        action_export = menu.addAction(icons.icon("fa6s.file-export"), "Export to HomeBank...")
+        action_export.triggered.connect(self._export_homebank)
+
+        self._btn_data.setMenu(menu)
 
     def _build_events_tab(self):
         tab = QWidget()
@@ -671,6 +697,55 @@ class MainWindow(QMainWindow):
             dto = CreateFinancialEventDTO(**data)
             self._financial_event_use_cases.create_event(dto)
             self._refresh_all()
+
+    def _import_homebank(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import HomeBank File", "", "HomeBank Files (*.xhb);;All Files (*)"
+        )
+        if not path:
+            return
+
+        try:
+            plan = self._homebank_import_use_cases.build_import_plan(path)
+        except XhbParseError as exc:
+            QMessageBox.critical(self, "Import Error", f"Could not read this HomeBank file:\n{exc}")
+            return
+
+        dialog = HomeBankImportPreviewDialog(plan.to_preview_dto(), self)
+        if not dialog.exec():
+            return
+
+        result = self._homebank_import_use_cases.commit_import_plan(plan)
+        self._refresh_all()
+
+        summary = ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in result.created_counts.items() if v)
+        message = f"Import complete: {summary or 'nothing to import'}."
+        if result.warnings:
+            message += f"\n\n{len(result.warnings)} item(s) had issues during import."
+        QMessageBox.information(self, "Import from HomeBank", message)
+
+    def _export_homebank(self):
+        options_dialog = HomeBankExportDialog(self)
+        if not options_dialog.exec():
+            return
+        options_data = options_dialog.get_data()
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export to HomeBank File", "export.xhb", "HomeBank Files (*.xhb)"
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".xhb"):
+            path += ".xhb"
+
+        options = HomeBankExportOptionsDTO(**options_data)
+        result = self._homebank_export_use_cases.export(path, options)
+
+        summary = ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in result.counts.items() if v)
+        message = f"Exported to {result.path}\n\n{summary or 'nothing to export'}."
+        if result.warnings:
+            message += f"\n\n{len(result.warnings)} item(s) had issues during export."
+        QMessageBox.information(self, "Export to HomeBank", message)
 
     def _open_settings(self):
         current_style = self._app_settings_use_cases.get_navigation_style()

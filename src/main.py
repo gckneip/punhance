@@ -14,6 +14,8 @@ from src.infrastructure.repositories.sqlite_installment_repository import SQLite
 from src.infrastructure.repositories.sqlite_dashboard_widget_repository import SQLiteDashboardWidgetRepository
 from src.infrastructure.repositories.sqlite_recurring_event_repository import SQLiteRecurringEventRepository
 from src.infrastructure.repositories.sqlite_app_settings_repository import SQLiteAppSettingsRepository
+from src.infrastructure.homebank.xhb_reader import XhbReader
+from src.infrastructure.homebank.xhb_writer import XhbWriter
 from src.application.use_cases.account_use_cases import AccountUseCases
 from src.application.use_cases.category_use_cases import CategoryUseCases
 from src.application.use_cases.counterparty_use_cases import CounterpartyUseCases
@@ -24,6 +26,8 @@ from src.application.use_cases.installment_use_cases import InstallmentUseCases
 from src.application.use_cases.recurring_event_use_cases import RecurringEventUseCases
 from src.application.use_cases.dashboard_layout_use_cases import DashboardLayoutUseCases
 from src.application.use_cases.app_settings_use_cases import AppSettingsUseCases
+from src.application.use_cases.homebank_import_use_cases import HomeBankImportUseCases
+from src.application.use_cases.homebank_export_use_cases import HomeBankExportUseCases
 from src.domain.services.credit_card_service import CreditCardService
 from src.domain.services.installment_service import InstallmentService
 from src.domain.services.monthly_summary_service import MonthlySummaryService
@@ -94,6 +98,17 @@ def main():
     )
     app_settings_use_cases = AppSettingsUseCases(app_settings_repo)
 
+    homebank_import_use_cases = HomeBankImportUseCases(
+        account_repo, category_repo, counterparty_repo, credit_card_repo,
+        financial_event_repo, purchase_use_cases, recurring_event_use_cases,
+        XhbReader(), conn,
+    )
+    homebank_export_use_cases = HomeBankExportUseCases(
+        account_use_cases, category_use_cases, counterparty_use_cases, credit_card_use_cases,
+        financial_event_use_cases, purchase_use_cases, recurring_event_use_cases,
+        XhbWriter(),
+    )
+
     chart_data_service = ChartDataService(
         financial_event_repository=financial_event_repo,
         account_repository=account_repo,
@@ -127,6 +142,8 @@ def main():
         chart_data_service,
         category_breakdown_service,
         account_summary_service,
+        homebank_import_use_cases=homebank_import_use_cases,
+        homebank_export_use_cases=homebank_export_use_cases,
     )
     window.show()
     sys.exit(app.exec())
