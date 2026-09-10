@@ -1,5 +1,6 @@
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLabel, QVBoxLayout,
+    QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLabel, QPushButton, QVBoxLayout,
 )
 
 from src.domain.entities.app_settings import NavigationStyle
@@ -12,11 +13,14 @@ NAVIGATION_STYLE_CHOICES = [
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, current_navigation_style: NavigationStyle, parent=None):
+    import_theme_requested = Signal()
+
+    def __init__(self, current_navigation_style: NavigationStyle, current_theme_id: str,
+                 available_themes, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setModal(True)
-        self.resize(380, 180)
+        self.resize(380, 220)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -29,9 +33,17 @@ class SettingsDialog(QDialog):
             self.navigation_style_combo.setCurrentIndex(index)
         form.addRow("Navigation Style:", self.navigation_style_combo)
 
+        self.theme_combo = QComboBox()
+        self._populate_theme_combo(current_theme_id, available_themes)
+        form.addRow("Theme:", self.theme_combo)
+
         layout.addLayout(form)
 
-        note = QLabel("Restart Finance Manager for a navigation style change to take effect.")
+        self.import_theme_button = QPushButton("Import Theme...")
+        self.import_theme_button.clicked.connect(self.import_theme_requested.emit)
+        layout.addWidget(self.import_theme_button)
+
+        note = QLabel("Restart Finance Manager for navigation style or theme changes to take effect.")
         note.setWordWrap(True)
         note.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 11px;")
         layout.addWidget(note)
@@ -41,7 +53,20 @@ class SettingsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    def _populate_theme_combo(self, selected_theme_id: str, available_themes) -> None:
+        self.theme_combo.clear()
+        for theme_summary in available_themes:
+            label = theme_summary.name + (" (Custom)" if theme_summary.is_custom else "")
+            self.theme_combo.addItem(label, theme_summary.theme_id)
+        index = self.theme_combo.findData(selected_theme_id)
+        if index >= 0:
+            self.theme_combo.setCurrentIndex(index)
+
+    def select_theme(self, theme_id: str, name: str, all_themes) -> None:
+        self._populate_theme_combo(theme_id, all_themes)
+
     def get_data(self) -> dict:
         return {
             "navigation_style": self.navigation_style_combo.currentData(),
+            "theme_id": self.theme_combo.currentData(),
         }

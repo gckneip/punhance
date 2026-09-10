@@ -1,0 +1,19 @@
+{
+  "name": "Nord",
+  "base": "light",
+  "bg_app": "#2E3440",
+  "surface": "#3B4252",
+  "border": "#434C5E",
+  "text_primary": "#ECEFF4",
+  "text_secondary": "#D8DEE9",
+  "primary": "#88C0D0",
+  "primary_hover": "#8FBCBB",
+  "primary_pressed": "#5E81AC",
+  "income": "#A3BE8C",
+  "expense": "#BF616A",
+  "selection": "#4C566A",
+  "chart_categorical": [
+    "#81A1C1", "#A3BE8C", "#B48EAD", "#EBCB8B",
+    "#8FBCBB", "#D08770", "#5E81AC", "#BF616A"
+  ]
+}

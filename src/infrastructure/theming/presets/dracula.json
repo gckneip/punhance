@@ -1,0 +1,19 @@
+{
+  "name": "Dracula",
+  "base": "light",
+  "bg_app": "#282A36",
+  "surface": "#343746",
+  "border": "#44475A",
+  "text_primary": "#F8F8F2",
+  "text_secondary": "#6272A4",
+  "primary": "#BD93F9",
+  "primary_hover": "#CBA6FA",
+  "primary_pressed": "#9D7CD8",
+  "income": "#50FA7B",
+  "expense": "#FF5555",
+  "selection": "#44475A",
+  "chart_categorical": [
+    "#8BE9FD", "#50FA7B", "#FFB86C", "#FF79C6",
+    "#BD93F9", "#FF5555", "#F1FA8C", "#7B90C7"
+  ]
+}

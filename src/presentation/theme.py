@@ -27,7 +27,61 @@ CHART_CATEGORICAL = [
     "#e34948",  # red
 ]
 
-STYLESHEET = f"""
+
+def load_palette(palette) -> None:
+    """Mutate this module's color globals from a ThemePalette.
+
+    Restart-only theming: call this exactly once, in main()/driver.py, after
+    AppSettingsUseCases/ThemeUseCases exist but before app.setStyleSheet(),
+    configure_pyqtgraph_theme(), or any widget/icon is constructed. Every
+    theme.* read-site in src/presentation/ does `from src.presentation import
+    theme` (module import) and reads theme.X inside a function/method body,
+    so it naturally picks up these new values with zero per-file changes.
+    """
+    global BG_APP, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY
+    global PRIMARY, PRIMARY_HOVER, PRIMARY_PRESSED, INCOME, EXPENSE, SELECTION
+    global CHART_CATEGORICAL
+    BG_APP = palette.bg_app
+    SURFACE = palette.surface
+    BORDER = palette.border
+    TEXT_PRIMARY = palette.text_primary
+    TEXT_SECONDARY = palette.text_secondary
+    PRIMARY = palette.primary
+    PRIMARY_HOVER = palette.primary_hover
+    PRIMARY_PRESSED = palette.primary_pressed
+    INCOME = palette.income
+    EXPENSE = palette.expense
+    SELECTION = palette.selection
+    CHART_CATEGORICAL = list(palette.chart_categorical)
+
+
+def _hex_to_rgb(value: str):
+    value = value.lstrip("#")
+    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _mix(hex_a: str, hex_b: str, amount: float) -> str:
+    """Blend hex_a toward hex_b by `amount` (0..1). Used to derive
+    hover/pressed/disabled/alternate-row shades from the active palette
+    instead of hardcoding light-mode-tuned grays that would look wrong
+    (e.g. a near-white hover flash) on a dark theme."""
+    a, b = _hex_to_rgb(hex_a), _hex_to_rgb(hex_b)
+    mixed = tuple(round(ca + (cb - ca) * amount) for ca, cb in zip(a, b))
+    return "#%02x%02x%02x" % mixed
+
+
+def build_stylesheet() -> str:
+    """Was a frozen module-level f-string (STYLESHEET). Now a function so it
+    re-interpolates the current module globals at call time - necessary
+    because an f-string bakes its values in at construction time, which
+    would happen once at import, before load_palette() could ever run."""
+    hover_bg = _mix(SURFACE, BORDER, 0.5)
+    pressed_bg = _mix(SURFACE, BORDER, 0.8)
+    disabled_bg = _mix(SURFACE, BORDER, 0.35)
+    alt_row_bg = _mix(SURFACE, BORDER, 0.15)
+    header_bg = _mix(SURFACE, BORDER, 0.3)
+
+    return f"""
 * {{
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     font-size: 13px;
@@ -91,17 +145,17 @@ QPushButton {{
 }}
 
 QPushButton:hover {{
-    background: #eef1f8;
+    background: {hover_bg};
     border-color: {PRIMARY};
 }}
 
 QPushButton:pressed {{
-    background: #e3e7f2;
+    background: {pressed_bg};
 }}
 
 QPushButton:disabled {{
     color: {TEXT_SECONDARY};
-    background: #f0f1f5;
+    background: {disabled_bg};
 }}
 
 QPushButton#primaryButton {{
@@ -144,11 +198,11 @@ QTableWidget {{
     gridline-color: {BORDER};
     selection-background-color: {SELECTION};
     selection-color: {TEXT_PRIMARY};
-    alternate-background-color: #fafbfe;
+    alternate-background-color: {alt_row_bg};
 }}
 
 QHeaderView::section {{
-    background: #f0f2f8;
+    background: {header_bg};
     color: {TEXT_SECONDARY};
     padding: 6px;
     border: none;
@@ -215,7 +269,7 @@ QListWidget#sidebarNav::item:selected {{
 }}
 
 QListWidget#sidebarNav::item:hover:!selected {{
-    background: #eef1f8;
+    background: {hover_bg};
     color: {TEXT_PRIMARY};
 }}
 """

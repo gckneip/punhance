@@ -1,0 +1,19 @@
+{
+  "name": "Solarized",
+  "base": "light",
+  "bg_app": "#002b36",
+  "surface": "#073642",
+  "border": "#586e75",
+  "text_primary": "#839496",
+  "text_secondary": "#586e75",
+  "primary": "#268bd2",
+  "primary_hover": "#2fa1f0",
+  "primary_pressed": "#1c6ea3",
+  "income": "#859900",
+  "expense": "#dc322f",
+  "selection": "#0b4f61",
+  "chart_categorical": [
+    "#b58900", "#cb4b16", "#dc322f", "#d33682",
+    "#6c71c4", "#268bd2", "#2aa198", "#859900"
+  ]
+}

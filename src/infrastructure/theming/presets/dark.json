@@ -1,0 +1,19 @@
+{
+  "name": "Dark",
+  "base": "light",
+  "bg_app": "#14161c",
+  "surface": "#1e212b",
+  "border": "#2c303c",
+  "text_primary": "#e6e8ef",
+  "text_secondary": "#9aa0ae",
+  "primary": "#5b8df9",
+  "primary_hover": "#729bfa",
+  "primary_pressed": "#3f6fd6",
+  "income": "#3ecf8e",
+  "expense": "#f2686c",
+  "selection": "#2d3a5c",
+  "chart_categorical": [
+    "#56B4E9", "#009E73", "#F0E442", "#E69F00",
+    "#CC79A7", "#7FB2E8", "#D55E00", "#D0D0D0"
+  ]
+}

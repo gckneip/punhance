@@ -16,6 +16,8 @@ from src.infrastructure.repositories.sqlite_recurring_event_repository import SQ
 from src.infrastructure.repositories.sqlite_app_settings_repository import SQLiteAppSettingsRepository
 from src.infrastructure.homebank.xhb_reader import XhbReader
 from src.infrastructure.homebank.xhb_writer import XhbWriter
+from src.infrastructure.theming.theme_file_repository import FileThemeRepository
+from src.infrastructure.config.settings import THEMES_DIR
 from src.application.use_cases.account_use_cases import AccountUseCases
 from src.application.use_cases.category_use_cases import CategoryUseCases
 from src.application.use_cases.counterparty_use_cases import CounterpartyUseCases
@@ -28,6 +30,8 @@ from src.application.use_cases.dashboard_layout_use_cases import DashboardLayout
 from src.application.use_cases.app_settings_use_cases import AppSettingsUseCases
 from src.application.use_cases.homebank_import_use_cases import HomeBankImportUseCases
 from src.application.use_cases.homebank_export_use_cases import HomeBankExportUseCases
+from src.application.use_cases.theme_use_cases import ThemeUseCases
+from src.domain.entities.theme import LIGHT_PALETTE
 from src.domain.services.credit_card_service import CreditCardService
 from src.domain.services.installment_service import InstallmentService
 from src.domain.services.monthly_summary_service import MonthlySummaryService
@@ -42,8 +46,6 @@ from src.presentation import theme
 
 def main():
     app = QApplication(sys.argv)
-    app.setStyleSheet(theme.STYLESHEET)
-    configure_pyqtgraph_theme()
 
     try:
         conn = get_connection()
@@ -56,6 +58,24 @@ def main():
         )
         sys.exit(1)
 
+    app_settings_repo = SQLiteAppSettingsRepository(conn)
+    app_settings_use_cases = AppSettingsUseCases(app_settings_repo)
+    theme_repo = FileThemeRepository(THEMES_DIR)
+    theme_use_cases = ThemeUseCases(theme_repo)
+
+    theme_id = app_settings_use_cases.get_current_theme_id()
+    palette = theme_use_cases.resolve_palette(theme_id)
+    fallback_notice = None
+    if palette is None:
+        fallback_notice = f"Your theme ({theme_id}) could not be found; reset to Light."
+        palette = LIGHT_PALETTE
+        app_settings_use_cases.set_current_theme_id("builtin:light")
+    theme.load_palette(palette)
+    app.setStyleSheet(theme.build_stylesheet())
+    configure_pyqtgraph_theme()
+    if fallback_notice:
+        QMessageBox.warning(None, "Theme Not Found", fallback_notice)
+
     account_repo = SQLiteAccountRepository(conn)
     category_repo = SQLiteCategoryRepository(conn)
     counterparty_repo = SQLiteCounterpartyRepository(conn)
@@ -66,7 +86,6 @@ def main():
     installment_repo = SQLiteInstallmentRepository(conn)
     dashboard_widget_repo = SQLiteDashboardWidgetRepository(conn)
     recurring_event_repo = SQLiteRecurringEventRepository(conn)
-    app_settings_repo = SQLiteAppSettingsRepository(conn)
 
     account_use_cases = AccountUseCases(account_repo)
     category_use_cases = CategoryUseCases(category_repo)
@@ -96,7 +115,6 @@ def main():
     recurring_event_use_cases = RecurringEventUseCases(
         recurring_event_repo, financial_event_repo, recurring_event_service
     )
-    app_settings_use_cases = AppSettingsUseCases(app_settings_repo)
 
     homebank_import_use_cases = HomeBankImportUseCases(
         account_repo, category_repo, counterparty_repo, credit_card_repo,
@@ -144,6 +162,7 @@ def main():
         account_summary_service,
         homebank_import_use_cases=homebank_import_use_cases,
         homebank_export_use_cases=homebank_export_use_cases,
+        theme_use_cases=theme_use_cases,
     )
     window.show()
     sys.exit(app.exec())

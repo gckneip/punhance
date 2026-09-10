@@ -38,6 +38,9 @@ from src.presentation.dialogs.homebank_import_dialog import HomeBankImportPrevie
 from src.presentation.dialogs.homebank_export_dialog import HomeBankExportDialog
 from src.infrastructure.homebank.xhb_reader import XhbParseError
 from src.application.dto.homebank_dto import HomeBankExportOptionsDTO
+from src.application.use_cases.theme_use_cases import ThemeUseCases
+from src.infrastructure.theming.theme_parser import ThemeParseError
+from src.presentation.app_restart import restart_app
 from src.presentation.widgets.dashboard.dashboard_grid_widget import DashboardGridWidget
 from src.presentation.widgets.installments_widget import InstallmentsWidget
 from src.presentation.widgets.category_breakdown_widget import CategoryBreakdownWidget
@@ -64,6 +67,7 @@ class MainWindow(QMainWindow):
         account_summary_service=None,
         homebank_import_use_cases=None,
         homebank_export_use_cases=None,
+        theme_use_cases: ThemeUseCases = None,
     ):
         super().__init__()
         self._account_use_cases = account_use_cases
@@ -79,6 +83,7 @@ class MainWindow(QMainWindow):
         self._account_summary_service = account_summary_service
         self._homebank_import_use_cases = homebank_import_use_cases
         self._homebank_export_use_cases = homebank_export_use_cases
+        self._theme_use_cases = theme_use_cases
 
         self.setWindowTitle("Personal Finance Manager")
         self.setWindowIcon(icons.icon("fa6s.sack-dollar", color=theme.PRIMARY))
@@ -749,16 +754,64 @@ class MainWindow(QMainWindow):
 
     def _open_settings(self):
         current_style = self._app_settings_use_cases.get_navigation_style()
-        dialog = SettingsDialog(current_style, self)
+        current_theme_id = self._app_settings_use_cases.get_current_theme_id()
+        available_themes = self._theme_use_cases.list_available_themes() if self._theme_use_cases else []
+
+        dialog = SettingsDialog(current_style, current_theme_id, available_themes, self)
+        dialog.import_theme_requested.connect(lambda: self._handle_theme_import(dialog))
         if dialog.exec():
             data = dialog.get_data()
+            changes = []
+            if data["navigation_style"] != current_style:
+                changes.append("navigation style")
+            if data["theme_id"] and data["theme_id"] != current_theme_id:
+                changes.append("theme")
+
+            if not changes:
+                return
+
+            box = QMessageBox(self)
+            box.setWindowTitle("Restart Required")
+            box.setText(
+                f"Restart Finance Manager for the new {' and '.join(changes)} to take effect."
+            )
+            restart_button = box.addButton("Restart Now", QMessageBox.AcceptRole)
+            box.addButton("Discard Changes", QMessageBox.RejectRole)
+            box.setDefaultButton(restart_button)
+            box.exec()
+
+            if box.clickedButton() is not restart_button:
+                return
+
             if data["navigation_style"] != current_style:
                 self._app_settings_use_cases.set_navigation_style(data["navigation_style"])
-                QMessageBox.information(
-                    self,
-                    "Restart Required",
-                    "Restart Finance Manager for the new navigation style to take effect.",
-                )
+            if data["theme_id"] and data["theme_id"] != current_theme_id:
+                self._app_settings_use_cases.set_current_theme_id(data["theme_id"])
+            restart_app()
+
+    def _handle_theme_import(self, dialog):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Theme", "", "Theme Files (*.json);;All Files (*)"
+        )
+        if not path:
+            return
+
+        try:
+            result = self._theme_use_cases.import_theme_file(path)
+        except ThemeParseError as exc:
+            QMessageBox.critical(self, "Import Error", f"Could not read this theme file:\n{exc}")
+            return
+
+        all_themes = self._theme_use_cases.list_available_themes()
+        dialog.select_theme(result.theme_id, result.name, all_themes)
+
+        message = f"Imported theme '{result.name}'."
+        if result.warnings:
+            message += (
+                f"\n\n{len(result.warnings)} color(s) were defaulted or ignored:\n"
+                + "\n".join(f"- {w}" for w in result.warnings)
+            )
+        QMessageBox.information(self, "Import Theme", message)
 
     def _edit_event(self, event_id):
         events = {e.id: e for e in self._financial_event_use_cases.list_events()}
