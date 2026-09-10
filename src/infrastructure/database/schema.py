@@ -160,6 +160,11 @@ def create_tables(conn):
         CREATE INDEX IF NOT EXISTS idx_recurring_events_start_date ON recurring_events(start_date);
         CREATE INDEX IF NOT EXISTS idx_recurring_event_skips_recurring_event_id ON recurring_event_skips(recurring_event_id);
 
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
+
         CREATE INDEX IF NOT EXISTS idx_financial_events_event_date ON financial_events(event_date);
         CREATE INDEX IF NOT EXISTS idx_financial_events_account_id ON financial_events(account_id);
         CREATE INDEX IF NOT EXISTS idx_financial_events_category_id ON financial_events(category_id);

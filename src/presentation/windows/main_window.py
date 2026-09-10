@@ -1,7 +1,7 @@
 from PySide6.QtGui import QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMenu,
-    QTabWidget, QTableWidget, QTableWidgetItem,
+    QTableWidget, QTableWidgetItem,
     QLabel, QMessageBox, QDateEdit, QComboBox, QLineEdit, QAbstractItemView,
 )
 from datetime import date, timedelta
@@ -22,7 +22,9 @@ from src.application.dto.financial_event_dto import CreateFinancialEventDTO
 from src.application.dto.purchase_dto import CreatePurchaseDTO, CreatePurchaseItemDTO
 from src.application.dto.recurring_event_dto import CreateRecurringEventDTO
 from src.domain.entities.purchase import PaymentMethod
+from src.domain.entities.app_settings import NavigationStyle
 from src.application.use_cases.dashboard_layout_use_cases import DashboardLayoutUseCases
+from src.application.use_cases.app_settings_use_cases import AppSettingsUseCases
 from src.domain.services.chart_data_service import ChartDataService
 from src.presentation.dialogs.account_dialog import AccountDialog
 from src.presentation.dialogs.category_dialog import CategoryDialog
@@ -31,10 +33,12 @@ from src.presentation.dialogs.credit_card_dialog import CreditCardDialog
 from src.presentation.dialogs.purchase_dialog import PurchaseDialog
 from src.presentation.dialogs.event_dialog import EventDialog
 from src.presentation.dialogs.recurring_event_dialog import RecurringEventDialog
+from src.presentation.dialogs.settings_dialog import SettingsDialog
 from src.presentation.widgets.dashboard.dashboard_grid_widget import DashboardGridWidget
 from src.presentation.widgets.installments_widget import InstallmentsWidget
 from src.presentation.widgets.category_breakdown_widget import CategoryBreakdownWidget
 from src.presentation.widgets.account_summary_widget import AccountSummaryWidget
+from src.presentation.widgets.nav_host import TabNavHost, SidebarNavHost
 from src.presentation import icons, theme
 
 
@@ -50,6 +54,7 @@ class MainWindow(QMainWindow):
         installment_use_cases: InstallmentUseCases,
         recurring_event_use_cases: RecurringEventUseCases,
         dashboard_layout_use_cases: DashboardLayoutUseCases,
+        app_settings_use_cases: AppSettingsUseCases,
         chart_data_service: ChartDataService,
         category_breakdown_service=None,
         account_summary_service=None,
@@ -63,6 +68,7 @@ class MainWindow(QMainWindow):
         self._purchase_use_cases = purchase_use_cases
         self._installment_use_cases = installment_use_cases
         self._recurring_event_use_cases = recurring_event_use_cases
+        self._app_settings_use_cases = app_settings_use_cases
         self._category_breakdown_service = category_breakdown_service
         self._account_summary_service = account_summary_service
 
@@ -70,6 +76,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(icons.icon("fa6s.sack-dollar", color=theme.PRIMARY))
         self.resize(900, 600)
 
+        self._navigation_style = app_settings_use_cases.get_navigation_style()
         self._build_ui()
 
         self._dashboard = DashboardGridWidget(
@@ -126,9 +133,17 @@ class MainWindow(QMainWindow):
         self._build_add_menu()
 
         toolbar.addStretch()
+
+        self._btn_settings = QPushButton()
+        self._btn_settings.setIcon(icons.icon("fa6s.gear"))
+        self._btn_settings.setToolTip("Settings")
+        self._btn_settings.setFixedWidth(36)
+        self._btn_settings.clicked.connect(self._open_settings)
+        toolbar.addWidget(self._btn_settings)
+
         layout.addLayout(toolbar)
 
-        self._tabs = QTabWidget()
+        self._tabs = TabNavHost() if self._navigation_style == NavigationStyle.TABS else SidebarNavHost()
         layout.addWidget(self._tabs)
 
         self._build_events_tab()
@@ -656,6 +671,19 @@ class MainWindow(QMainWindow):
             dto = CreateFinancialEventDTO(**data)
             self._financial_event_use_cases.create_event(dto)
             self._refresh_all()
+
+    def _open_settings(self):
+        current_style = self._app_settings_use_cases.get_navigation_style()
+        dialog = SettingsDialog(current_style, self)
+        if dialog.exec():
+            data = dialog.get_data()
+            if data["navigation_style"] != current_style:
+                self._app_settings_use_cases.set_navigation_style(data["navigation_style"])
+                QMessageBox.information(
+                    self,
+                    "Restart Required",
+                    "Restart Finance Manager for the new navigation style to take effect.",
+                )
 
     def _edit_event(self, event_id):
         events = {e.id: e for e in self._financial_event_use_cases.list_events()}

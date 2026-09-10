@@ -13,6 +13,7 @@ from src.infrastructure.repositories.sqlite_installment_plan_repository import S
 from src.infrastructure.repositories.sqlite_installment_repository import SQLiteInstallmentRepository
 from src.infrastructure.repositories.sqlite_dashboard_widget_repository import SQLiteDashboardWidgetRepository
 from src.infrastructure.repositories.sqlite_recurring_event_repository import SQLiteRecurringEventRepository
+from src.infrastructure.repositories.sqlite_app_settings_repository import SQLiteAppSettingsRepository
 from src.application.use_cases.account_use_cases import AccountUseCases
 from src.application.use_cases.category_use_cases import CategoryUseCases
 from src.application.use_cases.counterparty_use_cases import CounterpartyUseCases
@@ -22,6 +23,7 @@ from src.application.use_cases.purchase_use_cases import PurchaseUseCases
 from src.application.use_cases.installment_use_cases import InstallmentUseCases
 from src.application.use_cases.recurring_event_use_cases import RecurringEventUseCases
 from src.application.use_cases.dashboard_layout_use_cases import DashboardLayoutUseCases
+from src.application.use_cases.app_settings_use_cases import AppSettingsUseCases
 from src.domain.services.credit_card_service import CreditCardService
 from src.domain.services.installment_service import InstallmentService
 from src.domain.services.monthly_summary_service import MonthlySummaryService
@@ -60,6 +62,7 @@ def main():
     installment_repo = SQLiteInstallmentRepository(conn)
     dashboard_widget_repo = SQLiteDashboardWidgetRepository(conn)
     recurring_event_repo = SQLiteRecurringEventRepository(conn)
+    app_settings_repo = SQLiteAppSettingsRepository(conn)
 
     account_use_cases = AccountUseCases(account_repo)
     category_use_cases = CategoryUseCases(category_repo)
@@ -89,6 +92,7 @@ def main():
     recurring_event_use_cases = RecurringEventUseCases(
         recurring_event_repo, financial_event_repo, recurring_event_service
     )
+    app_settings_use_cases = AppSettingsUseCases(app_settings_repo)
 
     chart_data_service = ChartDataService(
         financial_event_repository=financial_event_repo,
@@ -119,6 +123,7 @@ def main():
         installment_use_cases,
         recurring_event_use_cases,
         dashboard_layout_use_cases,
+        app_settings_use_cases,
         chart_data_service,
         category_breakdown_service,
         account_summary_service,

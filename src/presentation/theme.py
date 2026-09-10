@@ -193,4 +193,29 @@ QFrame#previewDrawer {{
     border-radius: 10px;
     padding: 10px;
 }}
+
+QListWidget#sidebarNav {{
+    background: {SURFACE};
+    border: none;
+    border-right: 1px solid {BORDER};
+    outline: none;
+}}
+
+QListWidget#sidebarNav::item {{
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin: 2px 6px;
+    color: {TEXT_SECONDARY};
+}}
+
+QListWidget#sidebarNav::item:selected {{
+    background: {SELECTION};
+    color: {PRIMARY};
+    font-weight: 600;
+}}
+
+QListWidget#sidebarNav::item:hover:!selected {{
+    background: #eef1f8;
+    color: {TEXT_PRIMARY};
+}}
 """
