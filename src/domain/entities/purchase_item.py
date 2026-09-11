@@ -12,4 +12,5 @@ class PurchaseItem:
     unit_price: float = 0.0
     total_price: float = 0.0
     category_id: Optional[str] = None
+    product_id: Optional[str] = None
     id: str = field(default_factory=lambda: str(uuid.uuid4()))

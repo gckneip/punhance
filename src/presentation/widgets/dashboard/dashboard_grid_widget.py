@@ -376,7 +376,7 @@ class DashboardGridWidget(QWidget):
                 content = self._builtin_content.get(dto.id)
                 key = dto.config.get("builtin_key")
                 if key == "quick_add_bar":
-                    content.set_options(args["accounts"], args["categories"])
+                    content.set_options(args["accounts"], args["categories"], args["credit_cards"])
                 elif key == "recent_events":
                     content.set_rows(recent_rows)
                 elif key == "future_transactions":

@@ -58,6 +58,17 @@ DEFAULT_PRESETS = [
         },
     ),
     PresetDefinition(
+        preset_id="spending_by_item",
+        title="Spending by Item (This Month)",
+        kind=DashboardWidgetKind.GENERIC,
+        default_row_span=3,
+        default_col_span=6,
+        config={
+            "chart_type": "table", "metrics": ["expenses"], "group_by": "product",
+            "date_range": _this_month(), "filters": {},
+        },
+    ),
+    PresetDefinition(
         preset_id="account_balances",
         title="Account Balances",
         kind=DashboardWidgetKind.GENERIC,

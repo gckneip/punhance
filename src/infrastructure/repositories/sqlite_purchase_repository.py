@@ -64,10 +64,10 @@ class SQLitePurchaseRepository(PurchaseRepository):
     def save_item(self, item: PurchaseItem, commit: bool = True) -> None:
         self._conn.execute(
             """INSERT OR REPLACE INTO purchase_items
-               (id, purchase_id, name, quantity, unit, unit_price, total_price, category_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (id, purchase_id, name, quantity, unit, unit_price, total_price, category_id, product_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (item.id, item.purchase_id, item.name, item.quantity,
-             item.unit, item.unit_price, item.total_price, item.category_id),
+             item.unit, item.unit_price, item.total_price, item.category_id, item.product_id),
         )
         if commit:
             self._conn.commit()
@@ -77,6 +77,21 @@ class SQLitePurchaseRepository(PurchaseRepository):
             "SELECT * FROM purchase_items WHERE purchase_id = ? ORDER BY name",
             (purchase_id,),
         )
+        return [self._row_to_item(row) for row in cursor.fetchall()]
+
+    def find_items_in_range(self, date_from=None, date_to=None) -> List[PurchaseItem]:
+        query = """SELECT purchase_items.* FROM purchase_items
+                   JOIN purchases ON purchase_items.purchase_id = purchases.id
+                   JOIN financial_events ON purchases.financial_event_id = financial_events.id
+                   WHERE 1=1"""
+        params = []
+        if date_from:
+            query += " AND financial_events.event_date >= ?"
+            params.append(date_from.isoformat())
+        if date_to:
+            query += " AND financial_events.event_date < ?"
+            params.append(date_to.isoformat())
+        cursor = self._conn.execute(query, params)
         return [self._row_to_item(row) for row in cursor.fetchall()]
 
     def delete_items_by_purchase(self, purchase_id: str, commit: bool = True) -> None:
@@ -111,4 +126,5 @@ class SQLitePurchaseRepository(PurchaseRepository):
             unit_price=row["unit_price"],
             total_price=row["total_price"],
             category_id=row["category_id"],
+            product_id=row["product_id"],
         )

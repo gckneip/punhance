@@ -12,6 +12,7 @@ from src.domain.repositories.credit_card_repository import CreditCardRepository
 from src.domain.repositories.financial_event_repository import FinancialEventRepository
 from src.domain.repositories.installment_plan_repository import InstallmentPlanRepository
 from src.domain.repositories.installment_repository import InstallmentRepository
+from src.domain.repositories.product_repository import ProductRepository
 from src.domain.repositories.purchase_repository import PurchaseRepository
 from src.domain.repositories.recurring_event_repository import RecurringEventRepository
 from src.domain.services.account_summary_service import AccountSummaryService
@@ -43,6 +44,7 @@ class GroupByDimension(Enum):
     ACCOUNT = "account"
     COUNTERPARTY = "counterparty"
     CREDIT_CARD = "credit_card"
+    PRODUCT = "product"
 
 
 class ChartType(Enum):
@@ -63,7 +65,7 @@ VALID_GROUP_BYS: Dict[MetricType, Tuple[GroupByDimension, ...]] = {
     ),
     MetricType.EXPENSES: (
         GroupByDimension.NONE, GroupByDimension.MONTH, GroupByDimension.CATEGORY,
-        GroupByDimension.ACCOUNT, GroupByDimension.COUNTERPARTY,
+        GroupByDimension.ACCOUNT, GroupByDimension.COUNTERPARTY, GroupByDimension.PRODUCT,
     ),
     MetricType.NET: (
         GroupByDimension.NONE, GroupByDimension.MONTH, GroupByDimension.CATEGORY,
@@ -206,6 +208,7 @@ class ChartDataService:
         installment_repository: InstallmentRepository,
         installment_plan_repository: InstallmentPlanRepository,
         purchase_repository: PurchaseRepository,
+        product_repository: ProductRepository,
         recurring_event_repository: RecurringEventRepository,
         monthly_summary_service: MonthlySummaryService,
         category_breakdown_service: CategoryBreakdownService,
@@ -221,6 +224,7 @@ class ChartDataService:
         self._installment_repository = installment_repository
         self._installment_plan_repository = installment_plan_repository
         self._purchase_repository = purchase_repository
+        self._product_repository = product_repository
         self._recurring_event_repository = recurring_event_repository
         self._monthly_summary_service = monthly_summary_service
         self._category_breakdown_service = category_breakdown_service
@@ -336,6 +340,8 @@ class ChartDataService:
             return self._breakdown_by_counterparty(metrics, date_range, filters)
         if group_by == GroupByDimension.CREDIT_CARD:
             return self._breakdown_credit_card_debt(filters)
+        if group_by == GroupByDimension.PRODUCT:
+            return self._breakdown_by_product(date_range, filters)
         if group_by == GroupByDimension.NONE:
             return self._breakdown_none(metrics, date_range, filters)
         raise ValueError(f"Unsupported group_by: {group_by}")
@@ -529,6 +535,30 @@ class ChartDataService:
             )
             for u in utilization
         ]
+        return BreakdownResult(rows=rows)
+
+    def _breakdown_by_product(
+        self, date_range: DateRangeSpec, filters: Optional[ChartFilters]
+    ) -> BreakdownResult:
+        date_from, date_to = self.resolve_date_range(date_range)
+        items = self._purchase_repository.find_items_in_range(date_from, date_to)
+
+        agg: Dict[Optional[str], float] = {}
+        for item in items:
+            if item.product_id is None:
+                continue
+            agg[item.product_id] = agg.get(item.product_id, 0.0) + item.total_price
+
+        labels = {p.id: p.name for p in self._product_repository.find_all()}
+        rows = [
+            BreakdownRow(
+                dimension_id=product_id,
+                dimension_label=labels.get(product_id, "Unknown product"),
+                values={MetricType.EXPENSES.value: total},
+            )
+            for product_id, total in agg.items()
+        ]
+        rows.sort(key=lambda r: sum(r.values.values()), reverse=True)
         return BreakdownResult(rows=rows)
 
     def _breakdown_none(

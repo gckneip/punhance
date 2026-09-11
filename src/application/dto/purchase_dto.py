@@ -12,6 +12,7 @@ class CreatePurchaseItemDTO:
     unit_price: float = 0.0
     total_price: float = 0.0
     category_id: Optional[str] = None
+    product_id: Optional[str] = None
 
 
 @dataclass
@@ -21,6 +22,7 @@ class CreatePurchaseDTO:
     total_amount: float
     payment_method: PaymentMethod
     credit_card_id: Optional[str] = None
+    account_id: Optional[str] = None
     counterparty_id: Optional[str] = None
     notes: Optional[str] = None
     installment_count: int = 1
@@ -39,6 +41,7 @@ class PurchaseItemDTO:
     unit_price: float
     total_price: float
     category_id: Optional[str]
+    product_id: Optional[str] = None
 
 
 @dataclass

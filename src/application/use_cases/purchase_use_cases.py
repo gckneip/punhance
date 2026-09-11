@@ -64,6 +64,7 @@ class PurchaseUseCases:
                 amount=dto.total_amount,
                 category_id=category_id,
                 credit_card_id=dto.credit_card_id if dto.payment_method == PaymentMethod.CREDIT_CARD else None,
+                account_id=dto.account_id if dto.payment_method != PaymentMethod.CREDIT_CARD else None,
                 counterparty_id=dto.counterparty_id,
                 notes=dto.notes,
             )
@@ -109,6 +110,7 @@ class PurchaseUseCases:
                         unit_price=item_dto.unit_price,
                         total_price=item_dto.total_price,
                         category_id=item_dto.category_id,
+                        product_id=item_dto.product_id,
                     )
                     self._purchase_repo.save_item(item, commit=False)
                     items.append(item)
@@ -147,6 +149,7 @@ class PurchaseUseCases:
                 event.description = dto.description
                 event.amount = dto.total_amount
                 event.credit_card_id = dto.credit_card_id if dto.payment_method == PaymentMethod.CREDIT_CARD else None
+                event.account_id = dto.account_id if dto.payment_method != PaymentMethod.CREDIT_CARD else None
                 event.counterparty_id = dto.counterparty_id
                 event.notes = dto.notes
                 event.updated_at = datetime.now().isoformat()
@@ -197,6 +200,7 @@ class PurchaseUseCases:
                         unit_price=item_dto.unit_price,
                         total_price=item_dto.total_price,
                         category_id=item_dto.category_id,
+                        product_id=item_dto.product_id,
                     )
                     self._purchase_repo.save_item(item, commit=False)
                     items.append(item)
@@ -318,6 +322,7 @@ class PurchaseUseCases:
             ),
             "event_type": event.event_type.value if event else None,
             "category_id": event.category_id if event else None,
+            "account_id": event.account_id if event else None,
             "items": [self._item_to_dto(i) for i in items],
             "installments": installments,
             "remainder_on_first": plan.remainder_on_first if plan else False,
@@ -333,6 +338,7 @@ class PurchaseUseCases:
             unit_price=item.unit_price,
             total_price=item.total_price,
             category_id=item.category_id,
+            product_id=item.product_id,
         )
 
     def _installment_to_dto(self, inst) -> InstallmentDTO:

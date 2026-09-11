@@ -21,6 +21,7 @@ from src.application.dto.counterparty_dto import CreateCounterpartyDTO
 from src.application.dto.credit_card_dto import CreateCreditCardDTO
 from src.application.dto.financial_event_dto import CreateFinancialEventDTO
 from src.application.dto.purchase_dto import CreatePurchaseDTO, CreatePurchaseItemDTO
+from src.application.dto.product_dto import CreateProductDTO
 from src.application.dto.recurring_event_dto import CreateRecurringEventDTO
 from src.domain.entities.purchase import PaymentMethod
 from src.domain.entities.app_settings import NavigationStyle
@@ -72,6 +73,7 @@ class MainWindow(QMainWindow):
         homebank_import_use_cases=None,
         homebank_export_use_cases=None,
         theme_use_cases: ThemeUseCases = None,
+        product_use_cases=None,
     ):
         super().__init__()
         self._account_use_cases = account_use_cases
@@ -88,6 +90,7 @@ class MainWindow(QMainWindow):
         self._homebank_import_use_cases = homebank_import_use_cases
         self._homebank_export_use_cases = homebank_export_use_cases
         self._theme_use_cases = theme_use_cases
+        self._product_use_cases = product_use_cases
 
         self.setWindowTitle("Personal Finance Manager")
         self.setWindowIcon(icons.icon("fa6s.sack-dollar", color=theme.PRIMARY))
@@ -870,18 +873,24 @@ class MainWindow(QMainWindow):
         if purchase_data is None:
             return
 
+        accounts = self._account_use_cases.list_accounts()
         categories = self._category_use_cases.list_categories()
         credit_cards = self._credit_card_use_cases.list_cards()
         counterparties = self._counterparty_use_cases.list_counterparties()
+        products = self._product_use_cases.list_products()
 
         def create_counterparty(name):
             dto = self._counterparty_use_cases.create_counterparty(CreateCounterpartyDTO(name=name))
             self._refresh_counterparties()
             return dto
 
+        def create_product(name):
+            return self._product_use_cases.create_product(CreateProductDTO(name=name))
+
         dialog = PurchaseDialog(
             categories, credit_cards, counterparties, create_counterparty, self,
-            purchase_data=purchase_data,
+            purchase_data=purchase_data, accounts=accounts,
+            products=products, on_create_product=create_product,
         )
         if dialog.exec():
             data = dialog.get_data()
@@ -893,6 +902,7 @@ class MainWindow(QMainWindow):
                     unit_price=i["unit_price"],
                     total_price=i["total_price"],
                     category_id=i["category_id"],
+                    product_id=i["product_id"],
                 )
                 for i in data["items"]
             ]
@@ -903,6 +913,7 @@ class MainWindow(QMainWindow):
                 total_amount=data["total_amount"],
                 payment_method=PaymentMethod(data["payment_method"]),
                 credit_card_id=data["credit_card_id"],
+                account_id=data["account_id"],
                 notes=data["notes"],
                 installment_count=data["installment_count"],
                 remainder_on_first=data["remainder_on_first"],
@@ -986,18 +997,24 @@ class MainWindow(QMainWindow):
         if purchase_data is None:
             return
 
+        accounts = self._account_use_cases.list_accounts()
         categories = self._category_use_cases.list_categories()
         credit_cards = self._credit_card_use_cases.list_cards()
         counterparties = self._counterparty_use_cases.list_counterparties()
+        products = self._product_use_cases.list_products()
 
         def create_counterparty(name):
             dto = self._counterparty_use_cases.create_counterparty(CreateCounterpartyDTO(name=name))
             self._refresh_counterparties()
             return dto
 
+        def create_product(name):
+            return self._product_use_cases.create_product(CreateProductDTO(name=name))
+
         dialog = PurchaseDialog(
             categories, credit_cards, counterparties, create_counterparty, self,
-            purchase_data=purchase_data, duplicate=True,
+            purchase_data=purchase_data, duplicate=True, accounts=accounts,
+            products=products, on_create_product=create_product,
         )
         if dialog.exec():
             data = dialog.get_data()
@@ -1009,6 +1026,7 @@ class MainWindow(QMainWindow):
                     unit_price=i["unit_price"],
                     total_price=i["total_price"],
                     category_id=i["category_id"],
+                    product_id=i["product_id"],
                 )
                 for i in data["items"]
             ]
@@ -1019,6 +1037,7 @@ class MainWindow(QMainWindow):
                 total_amount=data["total_amount"],
                 payment_method=PaymentMethod(data["payment_method"]),
                 credit_card_id=data["credit_card_id"],
+                account_id=data["account_id"],
                 notes=data["notes"],
                 installment_count=data["installment_count"],
                 remainder_on_first=data["remainder_on_first"],
@@ -1032,16 +1051,24 @@ class MainWindow(QMainWindow):
             self._refresh_all()
 
     def _add_purchase(self):
+        accounts = self._account_use_cases.list_accounts()
         categories = self._category_use_cases.list_categories()
         credit_cards = self._credit_card_use_cases.list_cards()
         counterparties = self._counterparty_use_cases.list_counterparties()
+        products = self._product_use_cases.list_products()
 
         def create_counterparty(name):
             dto = self._counterparty_use_cases.create_counterparty(CreateCounterpartyDTO(name=name))
             self._refresh_counterparties()
             return dto
 
-        dialog = PurchaseDialog(categories, credit_cards, counterparties, create_counterparty, self)
+        def create_product(name):
+            return self._product_use_cases.create_product(CreateProductDTO(name=name))
+
+        dialog = PurchaseDialog(
+            categories, credit_cards, counterparties, create_counterparty, self,
+            accounts=accounts, products=products, on_create_product=create_product,
+        )
         if dialog.exec():
             data = dialog.get_data()
             items = []
@@ -1053,6 +1080,7 @@ class MainWindow(QMainWindow):
                     unit_price=i["unit_price"],
                     total_price=i["total_price"],
                     category_id=i["category_id"],
+                    product_id=i["product_id"],
                 ))
 
             dto = CreatePurchaseDTO(
@@ -1061,6 +1089,7 @@ class MainWindow(QMainWindow):
                 total_amount=data["total_amount"],
                 payment_method=PaymentMethod(data["payment_method"]),
                 credit_card_id=data["credit_card_id"],
+                account_id=data["account_id"],
                 notes=data["notes"],
                 installment_count=data["installment_count"],
                 remainder_on_first=data["remainder_on_first"],

@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 
 from src.domain.entities.financial_event import EventType
 from src.domain.entities.recurring_event import RecurrenceFrequency
+from src.presentation.widgets.account_credit_card_selector import AccountCreditCardSelector
 
 # All EventType values except "purchase" - a recurring-confirmed bare
 # FinancialEvent has no Purchase row, and main_window._edit_event special-cases
@@ -62,11 +63,9 @@ class RecurringEventDialog(QDialog):
             self.category_combo.addItem(cat.name, cat.id)
         form.addRow("Category:", self.category_combo)
 
-        self.account_combo = QComboBox()
-        self.account_combo.addItem("None", None)
-        for acc in accounts:
-            self.account_combo.addItem(f"{acc.name} ({acc.type})", acc.id)
-        form.addRow("Account (Source):", self.account_combo)
+        self.selector = AccountCreditCardSelector(accounts, credit_cards)
+        form.addRow("Account or Credit Card:", self.selector)
+        self._selector_label = form.labelForField(self.selector)
 
         self.dest_account_combo = QComboBox()
         self.dest_account_combo.addItem("None", None)
@@ -76,12 +75,6 @@ class RecurringEventDialog(QDialog):
         self.dest_label = QLabel("Destination Account:")
         self.dest_label.setVisible(False)
         form.addRow(self.dest_label, self.dest_account_combo)
-
-        self.credit_card_combo = QComboBox()
-        self.credit_card_combo.addItem("None", None)
-        for card in credit_cards:
-            self.credit_card_combo.addItem(card.name, card.id)
-        form.addRow("Credit Card:", self.credit_card_combo)
 
         self.counterparty_combo = QComboBox()
         self.counterparty_combo.addItem("None", None)
@@ -181,29 +174,37 @@ class RecurringEventDialog(QDialog):
 
     def _on_type_changed(self, text: str):
         is_transfer = (text == "transfer")
+        is_card_payment = (text == "card_payment")
         self.dest_account_combo.setVisible(is_transfer)
         self.dest_label.setVisible(is_transfer)
+        if is_transfer:
+            mode = AccountCreditCardSelector.MODE_ACCOUNT_ONLY
+            label = "Account (Source):"
+        elif is_card_payment:
+            mode = AccountCreditCardSelector.MODE_BOTH
+            label = "Account & Credit Card:"
+        else:
+            mode = AccountCreditCardSelector.MODE_EITHER
+            label = "Account or Credit Card:"
+        self.selector.set_mode(mode)
+        self._selector_label.setText(label)
 
     def _load_recurring_event(self, r):
         self.is_active_check.setChecked(r.is_active)
         index = self.type_combo.findText(r.event_type)
         if index >= 0:
             self.type_combo.setCurrentIndex(index)
+        self._on_type_changed(self.type_combo.currentText())
         self.amount_spin.setValue(r.amount)
         self.currency_combo.setCurrentText(r.currency)
         self.description_edit.setText(r.description)
         cat_index = self.category_combo.findData(r.category_id)
         if cat_index >= 0:
             self.category_combo.setCurrentIndex(cat_index)
-        acc_index = self.account_combo.findData(r.account_id)
-        if acc_index >= 0:
-            self.account_combo.setCurrentIndex(acc_index)
+        self.selector.set_selection(r.account_id, r.credit_card_id)
         dest_index = self.dest_account_combo.findData(r.destination_account_id)
         if dest_index >= 0:
             self.dest_account_combo.setCurrentIndex(dest_index)
-        card_index = self.credit_card_combo.findData(r.credit_card_id)
-        if card_index >= 0:
-            self.credit_card_combo.setCurrentIndex(card_index)
         cp_index = self.counterparty_combo.findData(r.counterparty_id)
         if cp_index >= 0:
             self.counterparty_combo.setCurrentIndex(cp_index)
@@ -230,8 +231,6 @@ class RecurringEventDialog(QDialog):
         else:
             self.no_end_check.setChecked(True)
 
-        self._on_type_changed(self.type_combo.currentText())
-
     def _validate_and_accept(self):
         if not self.description_edit.text().strip():
             QMessageBox.warning(self, "Validation", "Description is required.")
@@ -239,11 +238,15 @@ class RecurringEventDialog(QDialog):
         if self.amount_spin.value() == 0:
             QMessageBox.warning(self, "Validation", "Amount cannot be zero.")
             return
+        selector_error = self.selector.validation_error()
+        if selector_error:
+            QMessageBox.warning(self, "Validation", selector_error)
+            return
         if self.type_combo.currentText() == "transfer":
             if self.dest_account_combo.currentData() is None:
                 QMessageBox.warning(self, "Validation", "Destination account is required for transfers.")
                 return
-            if self.dest_account_combo.currentData() == self.account_combo.currentData():
+            if self.dest_account_combo.currentData() == self.selector.account_id():
                 QMessageBox.warning(self, "Validation", "Source and destination accounts must differ.")
                 return
         if not self.no_end_check.isChecked() and self.end_date_edit.date() < self.start_date_edit.date():
@@ -277,9 +280,9 @@ class RecurringEventDialog(QDialog):
             "end_date": None if self.no_end_check.isChecked() else self.end_date_edit.date().toPython(),
             "is_active": self.is_active_check.isChecked(),
             "category_id": self.category_combo.currentData(),
-            "account_id": self.account_combo.currentData(),
+            "account_id": self.selector.account_id(),
             "destination_account_id": self.dest_account_combo.currentData(),
-            "credit_card_id": self.credit_card_combo.currentData(),
+            "credit_card_id": self.selector.credit_card_id(),
             "counterparty_id": self.counterparty_combo.currentData(),
             "currency": self.currency_combo.currentText(),
             "notes": self.notes_edit.text().strip() or None,

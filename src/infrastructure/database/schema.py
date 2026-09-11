@@ -21,6 +21,11 @@ def create_tables(conn):
             name TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS products (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS credit_cards (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -76,8 +81,10 @@ def create_tables(conn):
             unit_price REAL NOT NULL,
             total_price REAL NOT NULL,
             category_id TEXT,
+            product_id TEXT,
             FOREIGN KEY(purchase_id) REFERENCES purchases(id),
-            FOREIGN KEY(category_id) REFERENCES categories(id)
+            FOREIGN KEY(category_id) REFERENCES categories(id),
+            FOREIGN KEY(product_id) REFERENCES products(id)
         );
 
         CREATE TABLE IF NOT EXISTS installment_plans (
@@ -278,6 +285,12 @@ def _migrate(conn):
                      SELECT financial_event_id FROM purchases WHERE credit_card_id IS NOT NULL
                  )"""
         )
+        conn.commit()
+
+    cursor = conn.execute("PRAGMA table_info(purchase_items)")
+    item_columns = [row[1] for row in cursor.fetchall()]
+    if item_columns and "product_id" not in item_columns:
+        conn.execute("ALTER TABLE purchase_items ADD COLUMN product_id TEXT")
         conn.commit()
 
     cursor = conn.execute("PRAGMA table_info(installment_plans)")

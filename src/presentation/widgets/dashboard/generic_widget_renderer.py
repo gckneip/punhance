@@ -18,6 +18,15 @@ METRIC_LABELS = {
     MetricType.INSTALLMENT_DUE: "Installments Due",
 }
 
+DIMENSION_COLUMN_LABELS = {
+    GroupByDimension.MONTH: "Month",
+    GroupByDimension.CATEGORY: "Category",
+    GroupByDimension.ACCOUNT: "Account",
+    GroupByDimension.COUNTERPARTY: "Counterparty",
+    GroupByDimension.CREDIT_CARD: "Credit Card",
+    GroupByDimension.PRODUCT: "Product",
+}
+
 
 def build_generic_content(title: str, config: dict, chart_data_service: ChartDataService) -> QWidget:
     chart_type = ChartType(config["chart_type"])
@@ -93,7 +102,8 @@ def _build_table_content(title: str, config: dict, chart_data_service: ChartData
     date_range = DateRangeSpec.from_dict(config["date_range"])
     filters = ChartFilters.from_dict(config.get("filters"))
     labels, series = _fetch_series(metrics, group_by, date_range, filters, chart_data_service)
-    return _build_series_table(labels, series, dimension_column="Month" if group_by == GroupByDimension.MONTH else "Category")
+    dimension_column = DIMENSION_COLUMN_LABELS.get(group_by, group_by.value)
+    return _build_series_table(labels, series, dimension_column=dimension_column)
 
 
 def _build_upcoming_installments_table(rows) -> QTableWidget:

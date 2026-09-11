@@ -7,14 +7,19 @@ from PySide6.QtWidgets import (
     QPushButton, QVBoxLayout, QHBoxLayout, QLabel, QMessageBox,
     QCheckBox, QSpinBox, QDialogButtonBox, QWidget, QLayout,
 )
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, Qt, QTimer
+from PySide6.QtGui import QFont, QFontMetrics
+from src.application.dto.account_dto import AccountDTO
 from src.application.dto.category_dto import CategoryDTO
 from src.application.dto.credit_card_dto import CreditCardDTO
 from src.application.dto.counterparty_dto import CounterpartyDTO
+from src.application.dto.product_dto import ProductDTO
 from src.domain.entities.installment_plan import InstallmentPlan
 from src.domain.services.installment_service import InstallmentService
 from src.presentation import icons, theme
 from src.presentation.dialogs.counterparty_dialog import CounterpartyDialog
+from src.presentation.dialogs.product_dialog import ProductDialog
+from src.presentation.widgets.account_credit_card_selector import AccountCreditCardSelector
 
 
 def _add_one_month(d: date) -> date:
@@ -36,12 +41,18 @@ class PurchaseDialog(QDialog):
         parent=None,
         purchase_data=None,
         duplicate=False,
+        accounts: List[AccountDTO] = None,
+        products: List[ProductDTO] = None,
+        on_create_product: Callable[[str], ProductDTO] = None,
     ):
         super().__init__(parent)
         self._categories = categories
         self._credit_cards = credit_cards
         self._counterparties = counterparties
+        self._products = list(products or [])
+        self._product_combos = []
         self._on_create_counterparty = on_create_counterparty
+        self._on_create_product = on_create_product
         self._installment_service = InstallmentService()
 
         if duplicate:
@@ -82,11 +93,10 @@ class PurchaseDialog(QDialog):
         self.payment_combo.currentTextChanged.connect(self._on_payment_changed)
         form.addRow("Payment Method:", self.payment_combo)
 
-        self.card_combo = QComboBox()
-        self.card_combo.addItem("None", None)
-        for cc in credit_cards:
-            self.card_combo.addItem(f"{cc.name} ({cc.issuer})", cc.id)
-        form.addRow("Credit Card:", self.card_combo)
+        self.selector = AccountCreditCardSelector(accounts, credit_cards)
+        form.addRow("Account or Credit Card:", self.selector)
+        self._selector_label = form.labelForField(self.selector)
+        self._on_payment_changed(self.payment_combo.currentText())
 
         self.installments_check = QCheckBox("Has installments")
         self.installments_check.toggled.connect(self._on_installments_toggled)
@@ -137,20 +147,32 @@ class PurchaseDialog(QDialog):
         left_column.addWidget(self.items_label)
 
         self.items_table = QTableWidget()
-        self.items_table.setColumnCount(6)
+        self.items_table.setColumnCount(7)
         self.items_table.setHorizontalHeaderLabels(
-            ["Name", "Qty", "Unit", "Unit Price", "Total", "Category"]
+            ["Product", "Name", "Qty", "Unit", "Unit Price", "Total", "Category"]
         )
         self.items_table.horizontalHeader().setStretchLastSection(True)
         self.items_table.setAlternatingRowColors(True)
         self.items_table.setMinimumHeight(180)
+        # Product/Name/Category can all hold long text: columns are sized to
+        # fit their content (see _sync_item_table_layout) and can add up to
+        # more than the table's own width, so let it scroll horizontally for
+        # the overflow instead of shrinking anything. QTableWidget's own
+        # sizeHint() is a fixed default independent of column content (does
+        # NOT grow with resizeColumnsToContents()), so there's no need to cap
+        # its width to protect the dialog's SetFixedSize sizing - it simply
+        # fills whatever space the layout gives it, same as before Product/
+        # Name existed.
+        self.items_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         left_column.addWidget(self.items_table)
 
         self.items_btn_row = QWidget()
         btn_row = QHBoxLayout(self.items_btn_row)
         btn_row.setContentsMargins(0, 0, 0, 0)
         self._btn_add_item = QPushButton("+ Add Item")
-        self._btn_add_item.clicked.connect(self._add_item_row)
+        # clicked emits a `checked` bool; swallow it so it doesn't land in
+        # _add_item_row's first positional param (`name`).
+        self._btn_add_item.clicked.connect(lambda: self._add_item_row())
         btn_row.addWidget(self._btn_add_item)
         btn_row.addStretch()
         left_column.addWidget(self.items_btn_row)
@@ -217,8 +239,25 @@ class PurchaseDialog(QDialog):
 
         layout.setSizeConstraint(QLayout.SetFixedSize)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Item rows added before the dialog was ever shown (editing/
+        # duplicating a purchase populates them during __init__, well before
+        # anyone calls .show()) never got a chance to be polished with the
+        # app stylesheet, so the deferred sync in _add_item_row measured
+        # them too early and under-sized both columns and rows. Re-sync once
+        # the dialog is actually on screen, when polishing is guaranteed to
+        # have happened - harmless to repeat for rows added afterward too.
+        if self.items_table.rowCount():
+            self._sync_item_table_layout()
+
     def _on_payment_changed(self, method: str):
-        self.card_combo.setEnabled(method == "credit_card")
+        is_card = method == "credit_card"
+        self.selector.set_mode(
+            AccountCreditCardSelector.MODE_CARD_ONLY if is_card
+            else AccountCreditCardSelector.MODE_ACCOUNT_ONLY
+        )
+        self._selector_label.setText("Credit Card:" if is_card else "Account:")
 
     def _on_installments_toggled(self, checked: bool):
         self.installments_drawer.setVisible(checked)
@@ -262,9 +301,7 @@ class PurchaseDialog(QDialog):
         if payment_index >= 0:
             self.payment_combo.setCurrentIndex(payment_index)
 
-        card_index = self.card_combo.findData(purchase.credit_card_id)
-        if card_index >= 0:
-            self.card_combo.setCurrentIndex(card_index)
+        self.selector.set_selection(purchase_data.get("account_id"), purchase.credit_card_id)
 
         installments = purchase_data.get("installments") or []
         if len(installments) > 1:
@@ -286,7 +323,7 @@ class PurchaseDialog(QDialog):
                 self._add_item_row(
                     name=item.name, qty=item.quantity, unit=item.unit,
                     unit_price=item.unit_price, total=item.total_price,
-                    cat_id=item.category_id,
+                    cat_id=item.category_id, product_id=item.product_id,
                 )
             self.has_items_check.setChecked(True)
         else:
@@ -302,37 +339,79 @@ class PurchaseDialog(QDialog):
             self.counterparty_combo.addItem(new_cp.name, new_cp.id)
             self.counterparty_combo.setCurrentIndex(self.counterparty_combo.count() - 1)
 
-    def _add_item_row(self, name="", qty=1.0, unit="UNIT", unit_price=0.0, total=0.0, cat_id=None):
+    def _add_product(self, combo: QComboBox):
+        dialog = ProductDialog(self)
+        if dialog.exec():
+            data = dialog.get_data()
+            new_product = self._on_create_product(data["name"])
+            self._products.append(new_product)
+            for product_combo in self._product_combos:
+                product_combo.addItem(new_product.name, new_product.id)
+                self._fit_combo_min_width(product_combo)
+            combo.setCurrentIndex(combo.count() - 1)
+            self._sync_item_table_layout()
+
+    def _add_item_row(self, name="", qty=1.0, unit="UNIT", unit_price=0.0, total=0.0, cat_id=None, product_id=None):
         row = self.items_table.rowCount()
         self.items_table.insertRow(row)
 
-        name_item = QTableWidgetItem(name)
-        self.items_table.setItem(row, 0, name_item)
+        product_container = QWidget()
+        product_row_layout = QHBoxLayout(product_container)
+        product_row_layout.setContentsMargins(0, 0, 0, 0)
+        product_combo = QComboBox()
+        for p in self._products:
+            product_combo.addItem(p.name, p.id)
+        if product_id:
+            idx = product_combo.findData(product_id)
+            if idx >= 0:
+                product_combo.setCurrentIndex(idx)
+        # A QComboBox elides its display text whenever the layout shrinks it
+        # below its content - which is exactly what a table cell does. Pin a
+        # minimum width to the widest item's text so it physically cannot be
+        # squeezed narrower than what it shows (worst case the column exceeds
+        # the viewport and the table scrolls horizontally, which it already
+        # supports). This is the real fix for the product name being cut off.
+        self._fit_combo_min_width(product_combo)
+        product_row_layout.addWidget(product_combo)
+        add_product_btn = QPushButton()
+        add_product_btn.setIcon(icons.icon("fa6s.circle-plus"))
+        add_product_btn.setFixedWidth(36)
+        add_product_btn.setToolTip("New product")
+        add_product_btn.clicked.connect(lambda _checked=False, combo=product_combo: self._add_product(combo))
+        product_row_layout.addWidget(add_product_btn)
+        product_container.product_combo = product_combo
+        self._product_combos.append(product_combo)
+        self.items_table.setCellWidget(row, 0, product_container)
+
+        name_edit = QLineEdit()
+        name_edit.setText(name)
+        name_edit.setPlaceholderText("e.g. Girando Sol 3L")
+        self.items_table.setCellWidget(row, 1, name_edit)
 
         qty_spin = QDoubleSpinBox()
         qty_spin.setRange(0.01, 999999)
         qty_spin.setDecimals(3)
         qty_spin.setValue(qty)
-        self.items_table.setCellWidget(row, 1, qty_spin)
+        self.items_table.setCellWidget(row, 2, qty_spin)
 
         unit_combo = QComboBox()
         unit_combo.addItems(["UNIT", "KG", "G", "L", "ML", "BOX", "PACK"])
         unit_combo.setCurrentText(unit)
-        self.items_table.setCellWidget(row, 2, unit_combo)
+        self.items_table.setCellWidget(row, 3, unit_combo)
 
         price_spin = QDoubleSpinBox()
         price_spin.setRange(0, 999999)
         price_spin.setDecimals(2)
         price_spin.setPrefix("R$ ")
         price_spin.setValue(unit_price)
-        self.items_table.setCellWidget(row, 3, price_spin)
+        self.items_table.setCellWidget(row, 4, price_spin)
 
         total_spin = QDoubleSpinBox()
         total_spin.setRange(0, 999999)
         total_spin.setDecimals(2)
         total_spin.setPrefix("R$ ")
         total_spin.setValue(total)
-        self.items_table.setCellWidget(row, 4, total_spin)
+        self.items_table.setCellWidget(row, 5, total_spin)
 
         def _recalc_total():
             total_spin.setValue(round(qty_spin.value() * price_spin.value(), 2))
@@ -347,17 +426,96 @@ class PurchaseDialog(QDialog):
             idx = cat_combo.findData(cat_id)
             if idx >= 0:
                 cat_combo.setCurrentIndex(idx)
-        self.items_table.setCellWidget(row, 5, cat_combo)
+        self._fit_combo_min_width(cat_combo)
+        self.items_table.setCellWidget(row, 6, cat_combo)
 
+        # Force every control tall enough that its (Fixed-height) content rect
+        # comfortably clears the font line height - see _control_min_height.
+        control_h = self._control_min_height()
+        for control in (
+            product_combo, add_product_btn, name_edit, qty_spin,
+            unit_combo, price_spin, total_spin, cat_combo,
+        ):
+            control.setMinimumHeight(control_h)
+
+        # Deferred: a freshly-constructed QComboBox/QDoubleSpinBox hasn't
+        # been polished with the app stylesheet yet at this point (that only
+        # happens once Qt processes the pending show/style events), so its
+        # sizeHint() still reflects Qt's small default padding rather than
+        # the theme's actual `padding: 5px 8px` - measuring it right now
+        # (for both column width and row height) under-reports the real
+        # rendered size. QLineEdit's own default sizeHint happens to already
+        # be tall/wide enough either way, which is why only it looked right
+        # before this fix. Measuring one event-loop tick later, after
+        # polishing has happened, gets the real size.
+        QTimer.singleShot(0, self._sync_item_table_layout)
+
+    def _control_min_height(self) -> int:
+        # A QComboBox/QDoubleSpinBox has a Fixed vertical size policy, so it
+        # renders at its own sizeHint height and is merely centered in the row
+        # - making the row taller never gives its text more room. Its default
+        # sizeHint leaves the content rect essentially equal to the font's
+        # line height (zero slack), which clips on real displays. So force the
+        # controls themselves taller via minimumHeight: line height (measured
+        # against theme.BASE_FONT_SIZE, since the widget's own fontMetrics()
+        # reports Qt's default font, not the stylesheet's) + a generous
+        # allowance for the theme's vertical padding (5px x2), border (1px x2)
+        # and slack. Scales automatically with a user-configured font size.
+        font = QFont(self.items_table.font())
+        font.setPixelSize(theme.BASE_FONT_SIZE)
+        return QFontMetrics(font).height() + 20
+
+    def _fit_combo_min_width(self, combo: QComboBox):
+        # Measure against a font pinned to theme.BASE_FONT_SIZE, not the
+        # combo's own fontMetrics() - the latter reports Qt's default font,
+        # not the (larger, user-configurable) font the stylesheet renders
+        # with, so it under-measures. Size to the widest item so any
+        # selection fits without eliding. The +52 covers the dropdown arrow,
+        # the theme's horizontal padding (8px each side), the frame, and a
+        # little slack.
+        font = QFont(combo.font())
+        font.setPixelSize(theme.BASE_FONT_SIZE)
+        fm = QFontMetrics(font)
+        text_w = max(
+            (fm.horizontalAdvance(combo.itemText(i)) for i in range(combo.count())),
+            default=0,
+        )
+        combo.setMinimumWidth(text_w + 52)
+
+    def _sync_item_table_layout(self):
+        # Each text combo already carries a minimum width sized to its widest
+        # item (see _fit_combo_min_width), so it can never be squeezed narrow
+        # enough to elide. resizeColumnsToContents() then grows each column to
+        # honor those minimums - "the cell fits the selector" - while the
+        # table scrolls horizontally for any total overflow.
         self.items_table.resizeColumnsToContents()
+
+        # Row height follows the controls' enforced minimum height (each cell
+        # control has setMinimumHeight(control_h)), plus a bit for the cell
+        # inset gap between the row and the cell widget (~9px measured), so the
+        # row always fully contains the now-taller controls.
+        row_height = self._control_min_height() + 12
+        for r in range(self.items_table.rowCount()):
+            self.items_table.setRowHeight(r, row_height)
 
     def _validate_and_accept(self):
         if not self.description_edit.text().strip():
             QMessageBox.warning(self, "Validation", "Description is required.")
             return
+        selector_error = self.selector.validation_error()
+        if selector_error:
+            QMessageBox.warning(self, "Validation", selector_error)
+            return
         if self.has_items_check.isChecked():
+            for row in range(self.items_table.rowCount()):
+                product_combo = self.items_table.cellWidget(row, 0).product_combo
+                if product_combo.currentData() is None:
+                    QMessageBox.warning(
+                        self, "Validation", f"Item {row + 1} is missing a product."
+                    )
+                    return
             items_total = round(sum(
-                self.items_table.cellWidget(row, 4).value()
+                self.items_table.cellWidget(row, 5).value()
                 for row in range(self.items_table.rowCount())
             ), 2)
             total = round(self.total_spin.value(), 2)
@@ -375,14 +533,17 @@ class PurchaseDialog(QDialog):
         items = []
         if self.has_items_check.isChecked():
             for row in range(self.items_table.rowCount()):
-                name = self.items_table.item(row, 0).text().strip() if self.items_table.item(row, 0) else ""
-                qty = self.items_table.cellWidget(row, 1).value()
-                unit = self.items_table.cellWidget(row, 2).currentText()
-                unit_price = self.items_table.cellWidget(row, 3).value()
-                total = self.items_table.cellWidget(row, 4).value()
-                cat_id = self.items_table.cellWidget(row, 5).currentData()
+                product_combo = self.items_table.cellWidget(row, 0).product_combo
+                product_id = product_combo.currentData()
+                name = self.items_table.cellWidget(row, 1).text().strip() or product_combo.currentText()
+                qty = self.items_table.cellWidget(row, 2).value()
+                unit = self.items_table.cellWidget(row, 3).currentText()
+                unit_price = self.items_table.cellWidget(row, 4).value()
+                total = self.items_table.cellWidget(row, 5).value()
+                cat_id = self.items_table.cellWidget(row, 6).currentData()
                 items.append({
                     "name": name,
+                    "product_id": product_id,
                     "quantity": qty,
                     "unit": unit,
                     "unit_price": unit_price,
@@ -395,7 +556,8 @@ class PurchaseDialog(QDialog):
             "description": self.description_edit.text().strip(),
             "total_amount": self.total_spin.value(),
             "payment_method": self.payment_combo.currentText(),
-            "credit_card_id": self.card_combo.currentData(),
+            "account_id": self.selector.account_id(),
+            "credit_card_id": self.selector.credit_card_id(),
             "notes": self.notes_edit.toPlainText().strip() or None,
             "installment_count": self.installments_spin.value() if self.installments_check.isChecked() else 1,
             "remainder_on_first": self.remainder_combo.currentData() if self.installments_check.isChecked() else False,

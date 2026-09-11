@@ -9,6 +9,7 @@ from src.infrastructure.repositories.sqlite_counterparty_repository import SQLit
 from src.infrastructure.repositories.sqlite_credit_card_repository import SQLiteCreditCardRepository
 from src.infrastructure.repositories.sqlite_financial_event_repository import SQLiteFinancialEventRepository
 from src.infrastructure.repositories.sqlite_purchase_repository import SQLitePurchaseRepository
+from src.infrastructure.repositories.sqlite_product_repository import SQLiteProductRepository
 from src.infrastructure.repositories.sqlite_installment_plan_repository import SQLiteInstallmentPlanRepository
 from src.infrastructure.repositories.sqlite_installment_repository import SQLiteInstallmentRepository
 from src.infrastructure.repositories.sqlite_dashboard_widget_repository import SQLiteDashboardWidgetRepository
@@ -25,6 +26,7 @@ from src.application.use_cases.counterparty_use_cases import CounterpartyUseCase
 from src.application.use_cases.credit_card_use_cases import CreditCardUseCases
 from src.application.use_cases.financial_event_use_cases import FinancialEventUseCases
 from src.application.use_cases.purchase_use_cases import PurchaseUseCases
+from src.application.use_cases.product_use_cases import ProductUseCases
 from src.application.use_cases.installment_use_cases import InstallmentUseCases
 from src.application.use_cases.recurring_event_use_cases import RecurringEventUseCases
 from src.application.use_cases.dashboard_layout_use_cases import DashboardLayoutUseCases
@@ -85,6 +87,7 @@ def main():
     credit_card_repo = SQLiteCreditCardRepository(conn)
     financial_event_repo = SQLiteFinancialEventRepository(conn)
     purchase_repo = SQLitePurchaseRepository(conn)
+    product_repo = SQLiteProductRepository(conn)
     installment_plan_repo = SQLiteInstallmentPlanRepository(conn)
     installment_repo = SQLiteInstallmentRepository(conn)
     dashboard_widget_repo = SQLiteDashboardWidgetRepository(conn)
@@ -111,6 +114,7 @@ def main():
         conn,
     )
     installment_use_cases = InstallmentUseCases(installment_repo, installment_plan_repo)
+    product_use_cases = ProductUseCases(product_repo)
     monthly_summary_service = MonthlySummaryService(financial_event_repo)
     category_breakdown_service = CategoryBreakdownService(financial_event_repo, purchase_repo)
     account_summary_service = AccountSummaryService(financial_event_repo, account_repo)
@@ -139,6 +143,7 @@ def main():
         installment_repository=installment_repo,
         installment_plan_repository=installment_plan_repo,
         purchase_repository=purchase_repo,
+        product_repository=product_repo,
         recurring_event_repository=recurring_event_repo,
         monthly_summary_service=monthly_summary_service,
         category_breakdown_service=category_breakdown_service,
@@ -169,6 +174,7 @@ def main():
         homebank_import_use_cases=homebank_import_use_cases,
         homebank_export_use_cases=homebank_export_use_cases,
         theme_use_cases=theme_use_cases,
+        product_use_cases=product_use_cases,
     )
     window.show()
     sys.exit(app.exec())

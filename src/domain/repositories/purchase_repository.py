@@ -34,5 +34,9 @@ class PurchaseRepository(ABC):
         pass
 
     @abstractmethod
+    def find_items_in_range(self, date_from=None, date_to=None) -> List[PurchaseItem]:
+        pass
+
+    @abstractmethod
     def delete_items_by_purchase(self, purchase_id: str, commit: bool = True) -> None:
         pass

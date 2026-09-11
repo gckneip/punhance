@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from src.application.dto.financial_event_dto import CreateFinancialEventDTO
 from src.domain.entities.financial_event import EventType
 from src.presentation import icons, theme
+from src.presentation.widgets.account_credit_card_selector import AccountCreditCardSelector
 from src.presentation.widgets.stat_card import make_stat_card
 
 INCOME_TYPES = ("income", "refund")
@@ -134,8 +135,8 @@ class QuickAddBarWidget(QFrame):
         self._qa_category = QComboBox()
         row.addWidget(self._qa_category)
 
-        self._qa_account = QComboBox()
-        row.addWidget(self._qa_account)
+        self._qa_selector = AccountCreditCardSelector()
+        row.addWidget(self._qa_selector)
 
         self._qa_button = QPushButton("Add")
         self._qa_button.setObjectName("primaryButton")
@@ -151,34 +152,24 @@ class QuickAddBarWidget(QFrame):
     def focus(self):
         self._qa_description.setFocus()
 
-    def set_options(self, accounts, categories):
+    def set_options(self, accounts, categories, credit_cards=None):
         prev_cat = self._qa_category.currentData()
-        prev_acc = self._qa_account.currentData()
 
         self._qa_category.blockSignals(True)
-        self._qa_account.blockSignals(True)
 
         self._qa_category.clear()
         self._qa_category.addItem("No category", None)
         for c in categories or []:
             self._qa_category.addItem(c.name, c.id)
 
-        self._qa_account.clear()
-        self._qa_account.addItem("No account", None)
-        for a in accounts or []:
-            self._qa_account.addItem(a.name, a.id)
-
         if prev_cat is not None:
             idx = self._qa_category.findData(prev_cat)
             if idx >= 0:
                 self._qa_category.setCurrentIndex(idx)
-        if prev_acc is not None:
-            idx = self._qa_account.findData(prev_acc)
-            if idx >= 0:
-                self._qa_account.setCurrentIndex(idx)
 
         self._qa_category.blockSignals(False)
-        self._qa_account.blockSignals(False)
+
+        self._qa_selector.set_data(accounts, credit_cards)
 
     def _quick_add(self):
         description = self._qa_description.text().strip()
@@ -190,6 +181,10 @@ class QuickAddBarWidget(QFrame):
         if amount == 0:
             self._show_status("Amount cannot be zero.", theme.EXPENSE)
             return
+        selector_error = self._qa_selector.validation_error()
+        if selector_error:
+            self._show_status(selector_error, theme.EXPENSE)
+            return
 
         event_type = EventType.INCOME if self._qa_type.currentText() == "Income" else EventType.EXPENSE
         dto = CreateFinancialEventDTO(
@@ -198,7 +193,8 @@ class QuickAddBarWidget(QFrame):
             description=description,
             amount=amount,
             category_id=self._qa_category.currentData(),
-            account_id=self._qa_account.currentData(),
+            account_id=self._qa_selector.account_id(),
+            credit_card_id=self._qa_selector.credit_card_id(),
         )
         self._financial_event_use_cases.create_event(dto)
 

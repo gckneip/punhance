@@ -20,6 +20,7 @@ GROUP_BY_LABELS = {
     GroupByDimension.ACCOUNT: "Account",
     GroupByDimension.COUNTERPARTY: "Counterparty",
     GroupByDimension.CREDIT_CARD: "Credit Card",
+    GroupByDimension.PRODUCT: "Product",
 }
 
 
