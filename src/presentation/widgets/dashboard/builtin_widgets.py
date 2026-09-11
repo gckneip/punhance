@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QDoubleSpinBox, QFrame, QHBoxLayout,
+    QAbstractItemView, QComboBox, QFrame, QHBoxLayout,
     QLabel, QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
@@ -13,6 +13,7 @@ from src.application.dto.financial_event_dto import CreateFinancialEventDTO
 from src.domain.entities.financial_event import EventType
 from src.presentation import icons, theme
 from src.presentation.widgets.account_credit_card_selector import AccountCreditCardSelector
+from src.presentation.widgets.currency_spin_box import CurrencySpinBox
 from src.presentation.widgets.stat_card import make_stat_card
 
 INCOME_TYPES = ("income", "refund")
@@ -126,7 +127,7 @@ class QuickAddBarWidget(QFrame):
         self._qa_description.returnPressed.connect(self._quick_add)
         row.addWidget(self._qa_description, stretch=2)
 
-        self._qa_amount = QDoubleSpinBox()
+        self._qa_amount = CurrencySpinBox()
         self._qa_amount.setRange(0, 999999)
         self._qa_amount.setDecimals(2)
         self._qa_amount.setPrefix("R$ ")

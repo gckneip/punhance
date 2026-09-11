@@ -20,6 +20,7 @@ from src.presentation import icons, theme
 from src.presentation.dialogs.counterparty_dialog import CounterpartyDialog
 from src.presentation.dialogs.product_dialog import ProductDialog
 from src.presentation.widgets.account_credit_card_selector import AccountCreditCardSelector
+from src.presentation.widgets.currency_spin_box import CurrencySpinBox
 
 
 def _add_one_month(d: date) -> date:
@@ -83,7 +84,7 @@ class PurchaseDialog(QDialog):
         self.description_edit = QLineEdit()
         form.addRow("Description:", self.description_edit)
 
-        self.total_spin = QDoubleSpinBox()
+        self.total_spin = CurrencySpinBox()
         self.total_spin.setRange(0.01, 999999)
         self.total_spin.setPrefix("R$ ")
         form.addRow("Total Amount:", self.total_spin)
@@ -399,16 +400,14 @@ class PurchaseDialog(QDialog):
         unit_combo.setCurrentText(unit)
         self.items_table.setCellWidget(row, 3, unit_combo)
 
-        price_spin = QDoubleSpinBox()
+        price_spin = CurrencySpinBox()
         price_spin.setRange(0, 999999)
-        price_spin.setDecimals(2)
         price_spin.setPrefix("R$ ")
         price_spin.setValue(unit_price)
         self.items_table.setCellWidget(row, 4, price_spin)
 
-        total_spin = QDoubleSpinBox()
+        total_spin = CurrencySpinBox()
         total_spin.setRange(0, 999999)
-        total_spin.setDecimals(2)
         total_spin.setPrefix("R$ ")
         total_spin.setValue(total)
         self.items_table.setCellWidget(row, 5, total_spin)

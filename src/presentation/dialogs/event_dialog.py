@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (
-    QDialog, QFormLayout, QLineEdit, QComboBox, QDoubleSpinBox,
+    QDialog, QFormLayout, QLineEdit, QComboBox,
     QDialogButtonBox, QVBoxLayout, QHBoxLayout, QMessageBox, QDateEdit, QLabel,
     QPushButton, QWidget,
 )
@@ -8,6 +8,7 @@ from src.domain.entities.financial_event import EventType
 from src.presentation import icons
 from src.presentation.dialogs.counterparty_dialog import CounterpartyDialog
 from src.presentation.widgets.account_credit_card_selector import AccountCreditCardSelector
+from src.presentation.widgets.currency_spin_box import CurrencySpinBox
 
 TYPE_CHOICES = ["expense", "income", "transfer"]
 CURRENCIES = ["BRL", "USD", "EUR", "GBP", "JPY", "ARS", "CAD", "AUD"]
@@ -42,7 +43,7 @@ class EventDialog(QDialog):
         form.addRow("Type:", self.type_combo)
 
         amount_row = QHBoxLayout()
-        self.amount_spin = QDoubleSpinBox()
+        self.amount_spin = CurrencySpinBox(allow_negative=True)
         self.amount_spin.setRange(-999999, 999999)
         amount_row.addWidget(self.amount_spin)
 

@@ -1,7 +1,8 @@
 from PySide6.QtWidgets import (
-    QDialog, QFormLayout, QLineEdit, QDoubleSpinBox, QSpinBox,
+    QDialog, QFormLayout, QLineEdit, QSpinBox,
     QCheckBox, QDialogButtonBox, QVBoxLayout, QMessageBox,
 )
+from src.presentation.widgets.currency_spin_box import CurrencySpinBox
 
 
 class CreditCardDialog(QDialog):
@@ -20,7 +21,7 @@ class CreditCardDialog(QDialog):
         self.issuer_edit = QLineEdit()
         form.addRow("Issuer:", self.issuer_edit)
 
-        self.limit_spin = QDoubleSpinBox()
+        self.limit_spin = CurrencySpinBox()
         self.limit_spin.setRange(0, 999999)
         self.limit_spin.setPrefix("R$ ")
         form.addRow("Credit Limit:", self.limit_spin)

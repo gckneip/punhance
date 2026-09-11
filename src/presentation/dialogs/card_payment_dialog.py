@@ -1,11 +1,12 @@
 from typing import List
 from PySide6.QtWidgets import (
-    QDialog, QFormLayout, QLineEdit, QComboBox, QDoubleSpinBox,
+    QDialog, QFormLayout, QLineEdit, QComboBox,
     QDateEdit, QTextEdit,
     QVBoxLayout, QMessageBox, QDialogButtonBox,
 )
 from PySide6.QtCore import QDate
 from src.application.dto.account_dto import AccountDTO
+from src.presentation.widgets.currency_spin_box import CurrencySpinBox
 
 
 class CardPaymentDialog(QDialog):
@@ -35,7 +36,7 @@ class CardPaymentDialog(QDialog):
             self.account_combo.addItem(f"{acc.name} ({acc.type})", acc.id)
         form.addRow("From Account:", self.account_combo)
 
-        self.amount_spin = QDoubleSpinBox()
+        self.amount_spin = CurrencySpinBox()
         self.amount_spin.setRange(0.01, 999999)
         self.amount_spin.setPrefix("R$ ")
         self.amount_spin.setValue(current_debt)

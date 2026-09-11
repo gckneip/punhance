@@ -32,6 +32,7 @@ from src.domain.services.chart_data_service import ChartDataService
 from src.presentation.dialogs.account_dialog import AccountDialog
 from src.presentation.dialogs.category_dialog import CategoryDialog
 from src.presentation.dialogs.counterparty_dialog import CounterpartyDialog
+from src.presentation.dialogs.product_dialog import ProductDialog
 from src.presentation.dialogs.credit_card_dialog import CreditCardDialog
 from src.presentation.dialogs.purchase_dialog import PurchaseDialog
 from src.presentation.dialogs.event_dialog import EventDialog
@@ -183,6 +184,7 @@ class MainWindow(QMainWindow):
         self._build_accounts_tab()
         self._build_categories_tab()
         self._build_counterparties_tab()
+        self._build_products_tab()
         self._build_credit_cards_tab()
         self._build_installments_tab()
         self._build_recurring_events_tab()
@@ -353,6 +355,34 @@ class MainWindow(QMainWindow):
 
         self._tabs.addTab(tab, icons.icon("fa6s.user-group"), "Counterparties")
 
+    def _build_products_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        btn_row = QHBoxLayout()
+        btn = QPushButton("+ Product")
+        btn.setIcon(icons.icon("fa6s.box"))
+        btn.clicked.connect(self._add_product)
+        btn_row.addWidget(btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        self._product_search = QLineEdit()
+        self._product_search.setPlaceholderText("Search products...")
+        self._product_search.textChanged.connect(self._refresh_products)
+        layout.addWidget(self._product_search)
+
+        self._products_table = EvenColumnsTableWidget()
+        self._products_table.setColumnCount(2)
+        self._products_table.setHorizontalHeaderLabels(["Name", "Actions"])
+        self._products_table.setObjectName("mainTabTable")
+        self._products_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._products_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._products_table.setAlternatingRowColors(True)
+        layout.addWidget(self._products_table)
+
+        self._tabs.addTab(tab, icons.icon("fa6s.box"), "Products")
+
     def _build_credit_cards_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
@@ -509,6 +539,55 @@ class MainWindow(QMainWindow):
             dto = CreateCounterpartyDTO(name=data["name"])
             self._counterparty_use_cases.update_counterparty(counterparty_id, dto)
             self._refresh_all()
+
+    def _add_product(self):
+        dialog = ProductDialog(self)
+        if dialog.exec():
+            data = dialog.get_data()
+            dto = CreateProductDTO(name=data["name"])
+            self._product_use_cases.create_product(dto)
+            self._refresh_all()
+
+    def _edit_product(self, product_id):
+        products = {p.id: p for p in self._product_use_cases.list_products()}
+        product = products.get(product_id)
+        if product is None:
+            return
+
+        dialog = ProductDialog(self, product=product)
+        if dialog.exec():
+            data = dialog.get_data()
+            dto = CreateProductDTO(name=data["name"])
+            self._product_use_cases.update_product(product_id, dto)
+            self._refresh_all()
+
+    def _delete_product(self, product_id):
+        products = {p.id: p for p in self._product_use_cases.list_products()}
+        product = products.get(product_id)
+        if product is None:
+            return
+
+        usage_count = self._purchase_use_cases.count_items_using_product(product_id)
+        if usage_count > 0:
+            QMessageBox.warning(
+                self,
+                "Product In Use",
+                f'"{product.name}" is used by {usage_count} purchase item(s) and can\'t be '
+                "deleted. Remove or reassign those items first.",
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Delete Product",
+            f'Delete "{product.name}"?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        self._product_use_cases.delete_product(product_id)
+        self._refresh_all()
 
     def _add_credit_card(self):
         dialog = CreditCardDialog(self)
@@ -1107,6 +1186,7 @@ class MainWindow(QMainWindow):
         self._refresh_accounts()
         self._refresh_categories()
         self._refresh_counterparties()
+        self._refresh_products()
         self._refresh_credit_cards()
         self._refresh_installments()
         self._refresh_recurring_events()
@@ -1310,6 +1390,22 @@ class MainWindow(QMainWindow):
             ]))
         self._counterparties_table.resizeColumnsToContents()
         self._counterparties_table.resizeRowsToContents()
+
+    def _refresh_products(self):
+        products = self._product_use_cases.list_products()
+        search = self._product_search.text().strip().lower()
+        if search:
+            products = [p for p in products if search in p.name.lower()]
+
+        self._products_table.setRowCount(len(products))
+        for i, p in enumerate(products):
+            self._products_table.setItem(i, 0, QTableWidgetItem(p.name))
+            self._products_table.setCellWidget(i, 1, self._make_actions_widget([
+                ("Edit", "fa6s.pen", lambda _, p_id=p.id: self._edit_product(p_id)),
+                ("Delete", "fa6s.trash", lambda _, p_id=p.id: self._delete_product(p_id), theme.EXPENSE),
+            ]))
+        self._products_table.resizeColumnsToContents()
+        self._products_table.resizeRowsToContents()
 
     def _refresh_credit_cards(self):
         cards = self._credit_card_use_cases.list_cards()

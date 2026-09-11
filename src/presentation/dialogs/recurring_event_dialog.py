@@ -1,6 +1,6 @@
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox,
+    QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox,
     QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
     QSpinBox, QStackedWidget, QVBoxLayout, QWidget,
 )
@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 from src.domain.entities.financial_event import EventType
 from src.domain.entities.recurring_event import RecurrenceFrequency
 from src.presentation.widgets.account_credit_card_selector import AccountCreditCardSelector
+from src.presentation.widgets.currency_spin_box import CurrencySpinBox
 
 # All EventType values except "purchase" - a recurring-confirmed bare
 # FinancialEvent has no Purchase row, and main_window._edit_event special-cases
@@ -45,7 +46,7 @@ class RecurringEventDialog(QDialog):
         form.addRow("Type:", self.type_combo)
 
         amount_row = QHBoxLayout()
-        self.amount_spin = QDoubleSpinBox()
+        self.amount_spin = CurrencySpinBox(allow_negative=True)
         self.amount_spin.setRange(-999999, 999999)
         amount_row.addWidget(self.amount_spin)
         self.currency_combo = QComboBox()

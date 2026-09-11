@@ -94,6 +94,12 @@ class SQLitePurchaseRepository(PurchaseRepository):
         cursor = self._conn.execute(query, params)
         return [self._row_to_item(row) for row in cursor.fetchall()]
 
+    def count_items_by_product(self, product_id: str) -> int:
+        cursor = self._conn.execute(
+            "SELECT COUNT(*) FROM purchase_items WHERE product_id = ?", (product_id,)
+        )
+        return cursor.fetchone()[0]
+
     def delete_items_by_purchase(self, purchase_id: str, commit: bool = True) -> None:
         self._conn.execute(
             "DELETE FROM purchase_items WHERE purchase_id = ?", (purchase_id,)

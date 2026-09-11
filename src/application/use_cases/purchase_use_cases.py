@@ -266,6 +266,9 @@ class PurchaseUseCases:
                 result.add(p.financial_event_id)
         return result
 
+    def count_items_using_product(self, product_id: str) -> int:
+        return self._purchase_repo.count_items_by_product(product_id)
+
     def get_multi_installment_map(self) -> Dict[str, List[InstallmentDTO]]:
         plans = self._plan_repo.find_all()
         multi_plans = {p.id: p for p in plans if p.installment_count >= 2}

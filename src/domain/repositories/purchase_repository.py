@@ -38,5 +38,9 @@ class PurchaseRepository(ABC):
         pass
 
     @abstractmethod
+    def count_items_by_product(self, product_id: str) -> int:
+        pass
+
+    @abstractmethod
     def delete_items_by_purchase(self, purchase_id: str, commit: bool = True) -> None:
         pass
