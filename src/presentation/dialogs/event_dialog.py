@@ -1,18 +1,27 @@
 from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QComboBox, QDoubleSpinBox,
     QDialogButtonBox, QVBoxLayout, QHBoxLayout, QMessageBox, QDateEdit, QLabel,
+    QPushButton, QWidget,
 )
 from PySide6.QtCore import QDate
 from src.domain.entities.financial_event import EventType
+from src.presentation import icons
+from src.presentation.dialogs.counterparty_dialog import CounterpartyDialog
 
 TYPE_CHOICES = ["expense", "income", "transfer"]
 CURRENCIES = ["BRL", "USD", "EUR", "GBP", "JPY", "ARS", "CAD", "AUD"]
 
 
 class EventDialog(QDialog):
-    def __init__(self, accounts, categories, counterparties, parent=None, event=None):
+    def __init__(self, accounts, categories, counterparties, credit_cards, on_create_counterparty, parent=None, event=None, duplicate=False):
         super().__init__(parent)
-        self.setWindowTitle("Edit Event" if event else "Create Financial Event")
+        self._on_create_counterparty = on_create_counterparty
+        if duplicate:
+            self.setWindowTitle("Duplicate Event")
+        elif event:
+            self.setWindowTitle("Edit Event")
+        else:
+            self.setWindowTitle("Create Financial Event")
         self.setModal(True)
         self.resize(400, 350)
 
@@ -72,11 +81,28 @@ class EventDialog(QDialog):
             self.dest_label.setVisible(is_transfer)
         self.type_combo.currentTextChanged.connect(_on_type_changed)
 
+        self.credit_card_combo = QComboBox()
+        self.credit_card_combo.addItem("None", None)
+        for card in credit_cards:
+            self.credit_card_combo.addItem(card.name, card.id)
+        form.addRow("Credit Card:", self.credit_card_combo)
+
         self.counterparty_combo = QComboBox()
         self.counterparty_combo.addItem("None", None)
         for cp in counterparties:
             self.counterparty_combo.addItem(cp.name, cp.id)
-        form.addRow("Counterparty:", self.counterparty_combo)
+
+        counterparty_row = QWidget()
+        counterparty_row_layout = QHBoxLayout(counterparty_row)
+        counterparty_row_layout.setContentsMargins(0, 0, 0, 0)
+        counterparty_row_layout.addWidget(self.counterparty_combo)
+        self._btn_add_counterparty = QPushButton()
+        self._btn_add_counterparty.setIcon(icons.icon("fa6s.circle-plus"))
+        self._btn_add_counterparty.setFixedWidth(36)
+        self._btn_add_counterparty.setToolTip("New counterparty")
+        self._btn_add_counterparty.clicked.connect(self._add_counterparty)
+        counterparty_row_layout.addWidget(self._btn_add_counterparty)
+        form.addRow("Counterparty:", counterparty_row)
 
         self.notes_edit = QLineEdit()
         form.addRow("Notes:", self.notes_edit)
@@ -100,6 +126,9 @@ class EventDialog(QDialog):
             dest_index = self.dest_account_combo.findData(event.destination_account_id)
             if dest_index >= 0:
                 self.dest_account_combo.setCurrentIndex(dest_index)
+            card_index = self.credit_card_combo.findData(event.credit_card_id)
+            if card_index >= 0:
+                self.credit_card_combo.setCurrentIndex(card_index)
             cp_index = self.counterparty_combo.findData(event.counterparty_id)
             if cp_index >= 0:
                 self.counterparty_combo.setCurrentIndex(cp_index)
@@ -127,6 +156,14 @@ class EventDialog(QDialog):
                 return
         self.accept()
 
+    def _add_counterparty(self):
+        dialog = CounterpartyDialog(self)
+        if dialog.exec():
+            data = dialog.get_data()
+            new_cp = self._on_create_counterparty(data["name"])
+            self.counterparty_combo.addItem(new_cp.name, new_cp.id)
+            self.counterparty_combo.setCurrentIndex(self.counterparty_combo.count() - 1)
+
     def get_data(self):
         type_map = {
             "expense": EventType.EXPENSE,
@@ -142,6 +179,7 @@ class EventDialog(QDialog):
             "category_id": self.category_combo.currentData(),
             "account_id": self.account_combo.currentData(),
             "destination_account_id": self.dest_account_combo.currentData(),
+            "credit_card_id": self.credit_card_combo.currentData(),
             "counterparty_id": self.counterparty_combo.currentData(),
             "currency": self.currency_combo.currentText(),
             "notes": self.notes_edit.text().strip() or None,

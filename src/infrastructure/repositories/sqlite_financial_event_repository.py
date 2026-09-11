@@ -65,6 +65,7 @@ class SQLiteFinancialEventRepository(FinancialEventRepository):
         counterparty_id: Optional[str] = None,
         description: Optional[str] = None,
         recurring_event_id: Optional[str] = None,
+        credit_card_id: Optional[str] = None,
     ) -> List[FinancialEvent]:
         query = "SELECT * FROM financial_events WHERE 1=1"
         params = []
@@ -97,6 +98,9 @@ class SQLiteFinancialEventRepository(FinancialEventRepository):
         if recurring_event_id:
             query += " AND recurring_event_id = ?"
             params.append(recurring_event_id)
+        if credit_card_id:
+            query += " AND credit_card_id = ?"
+            params.append(credit_card_id)
 
         query += " ORDER BY event_date DESC, created_at DESC"
 

@@ -40,12 +40,6 @@ class InstallmentUseCases:
             )
         return [self._to_dto(i) for i in installments]
 
-    def mark_as_paid(self, installment_id: str) -> None:
-        inst = self._installment_repo.find_by_id(installment_id)
-        if inst:
-            inst.status = InstallmentStatus.PAID
-            self._installment_repo.save(inst)
-
     def _to_dto(self, inst: Installment) -> InstallmentDTO:
         return InstallmentDTO(
             id=inst.id,

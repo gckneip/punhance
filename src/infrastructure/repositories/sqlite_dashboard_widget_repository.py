@@ -65,6 +65,12 @@ class SQLiteDashboardWidgetRepository(DashboardWidgetRepository):
         )
         self._conn.commit()
 
+    def delete_by_dashboard_id(self, dashboard_id: str) -> None:
+        self._conn.execute(
+            "DELETE FROM dashboard_widgets WHERE dashboard_id = ?", (dashboard_id,)
+        )
+        self._conn.commit()
+
     def _to_entity(self, row: sqlite3.Row) -> DashboardWidget:
         return DashboardWidget(
             id=row["id"],

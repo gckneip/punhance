@@ -3,9 +3,7 @@ from src.domain.entities.credit_card import CreditCard
 from src.domain.entities.financial_event import FinancialEvent, EventType
 from src.domain.repositories.credit_card_repository import CreditCardRepository
 from src.domain.repositories.financial_event_repository import FinancialEventRepository
-from src.domain.repositories.installment_repository import InstallmentRepository
 from src.domain.services.credit_card_service import CreditCardService
-from src.domain.entities.installment import InstallmentStatus
 from src.application.dto.credit_card_dto import CreateCreditCardDTO, CreditCardDTO
 from src.application.dto.card_payment_dto import CreateCardPaymentDTO
 
@@ -16,12 +14,10 @@ class CreditCardUseCases:
         credit_card_repository: CreditCardRepository,
         credit_card_service: CreditCardService,
         financial_event_repository: FinancialEventRepository = None,
-        installment_repository: InstallmentRepository = None,
     ):
         self._repository = credit_card_repository
         self._service = credit_card_service
         self._event_repo = financial_event_repository
-        self._installment_repo = installment_repository
 
     def create_card(self, dto: CreateCreditCardDTO) -> CreditCardDTO:
         card = CreditCard(
@@ -67,22 +63,9 @@ class CreditCardUseCases:
         if not card.is_active:
             return {"error": "Credit card is not active"}
 
-        payable_installments = []
-        if dto.installment_ids and self._installment_repo:
-            for inst_id in dto.installment_ids:
-                inst = self._installment_repo.find_by_id(inst_id)
-                if inst and inst.status in (InstallmentStatus.PENDING, InstallmentStatus.OVERDUE):
-                    payable_installments.append(inst)
-
-            expected_amount = round(sum(i.amount for i in payable_installments), 2)
-            if abs(expected_amount - dto.amount) > 0.01:
-                return {
-                    "error": (
-                        f"Payment amount (R$ {dto.amount:.2f}) does not match the sum "
-                        f"of selected installments (R$ {expected_amount:.2f})"
-                    )
-                }
-
+        # A card payment is a ledger entry - like a transfer from an account
+        # to the card - that reduces the card's debt by the paid amount. It
+        # is not tied to specific installments (see CreditCardService.get_status).
         event = FinancialEvent(
             event_type=EventType.CARD_PAYMENT,
             event_date=dto.event_date,
@@ -94,16 +77,7 @@ class CreditCardUseCases:
         )
         self._event_repo.save(event)
 
-        paid_count = 0
-        for inst in payable_installments:
-            inst.status = InstallmentStatus.PAID
-            self._installment_repo.save(inst)
-            paid_count += 1
-
-        return {
-            "event_id": event.id,
-            "installments_paid": paid_count,
-        }
+        return {"event_id": event.id}
 
     def _to_dto(self, card: CreditCard) -> CreditCardDTO:
         return CreditCardDTO(

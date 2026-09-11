@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 import pyqtgraph as pg
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from src.presentation import theme
 
@@ -42,6 +42,18 @@ class ChartWidget(QWidget):
         self._empty_label.setAlignment(Qt.AlignCenter)
         self._empty_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
         self._empty_label.hide()
+        self._empty_label.setSizePolicy(QSizePolicy.Ignored, self._empty_label.sizePolicy().verticalPolicy())
+
+        # pyqtgraph's PlotWidget defaults to a Preferred/Expanding size
+        # policy, which (like any policy carrying the Shrink flag) makes
+        # Qt's layout engine treat its minimumSizeHint() as a hard floor -
+        # setMinimumSize(0, 0) would NOT override that (0 is already the
+        # unset default, so it's a no-op; the actual fix is Ignored). Without
+        # this, this chart would fight the dashboard grid's fixed row/column
+        # sizing (see dashboard_grid_widget.py) the way the old hardcoded
+        # setMinimumHeight(160) on PieChartWidget used to.
+        self._plot.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -101,7 +113,12 @@ class PieChartWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumHeight(160)
+        # Ignored (not just setMinimumSize(0, 0), which is a no-op - see
+        # ChartWidget above) so this never forces whichever row/column it
+        # lands in to grow past the dashboard grid's fixed unit size (see
+        # dashboard_grid_widget.py) the way the old hardcoded
+        # setMinimumHeight(160) used to.
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self._entries: List[tuple] = []
         self._empty_message: Optional[str] = "No data for this range."
 

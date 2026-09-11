@@ -13,7 +13,7 @@ from src.application.dto.credit_card_dto import CreditCardDTO
 from src.application.dto.counterparty_dto import CounterpartyDTO
 from src.domain.entities.installment_plan import InstallmentPlan
 from src.domain.services.installment_service import InstallmentService
-from src.presentation import theme
+from src.presentation import icons, theme
 from src.presentation.dialogs.counterparty_dialog import CounterpartyDialog
 
 
@@ -35,6 +35,7 @@ class PurchaseDialog(QDialog):
         on_create_counterparty: Callable[[str], CounterpartyDTO],
         parent=None,
         purchase_data=None,
+        duplicate=False,
     ):
         super().__init__(parent)
         self._categories = categories
@@ -43,7 +44,12 @@ class PurchaseDialog(QDialog):
         self._on_create_counterparty = on_create_counterparty
         self._installment_service = InstallmentService()
 
-        self.setWindowTitle("Edit Purchase" if purchase_data else "Create Purchase")
+        if duplicate:
+            self.setWindowTitle("Duplicate Purchase")
+        elif purchase_data:
+            self.setWindowTitle("Edit Purchase")
+        else:
+            self.setWindowTitle("Create Purchase")
         self.setModal(True)
 
         layout = QVBoxLayout(self)
@@ -100,8 +106,9 @@ class PurchaseDialog(QDialog):
         counterparty_row_layout = QHBoxLayout(counterparty_row)
         counterparty_row_layout.setContentsMargins(0, 0, 0, 0)
         counterparty_row_layout.addWidget(self.counterparty_combo)
-        self._btn_add_counterparty = QPushButton("+")
-        self._btn_add_counterparty.setFixedWidth(28)
+        self._btn_add_counterparty = QPushButton()
+        self._btn_add_counterparty.setIcon(icons.icon("fa6s.circle-plus"))
+        self._btn_add_counterparty.setFixedWidth(36)
         self._btn_add_counterparty.setToolTip("New counterparty")
         self._btn_add_counterparty.clicked.connect(self._add_counterparty)
         counterparty_row_layout.addWidget(self._btn_add_counterparty)

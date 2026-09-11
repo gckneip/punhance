@@ -1,7 +1,7 @@
 from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtGui import QColor, QDrag, QPainter, QPen
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QPushButton, QSpinBox, QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from src.presentation import icons, theme
@@ -85,6 +85,24 @@ class _ResizeHandle(QWidget):
         self._frame.commit_span()
 
 
+class _DeleteButton(QPushButton):
+    """Floats over the top-right corner of the widget's own content (no
+    layout space reserved for it) instead of living in the header row, so
+    edit mode never changes the frame's content size versus outside edit
+    mode - edit mode should be a faithful preview of the real layout."""
+
+    def __init__(self, frame: "WidgetFrame"):
+        super().__init__(frame)
+        self.setIcon(icons.icon("fa6s.xmark", color=theme.EXPENSE))
+        self.setToolTip("Delete widget")
+        self.setFixedSize(24, 24)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setStyleSheet(
+            f"QPushButton {{ background: {theme.SURFACE}; border: 1px solid {theme.BORDER}; "
+            f"border-radius: 12px; padding: 0px; }}"
+        )
+
+
 class WidgetFrame(QFrame):
     delete_requested = Signal(str)
     span_changed = Signal(str, int, int)  # widget_id, row_span, col_span
@@ -94,6 +112,8 @@ class WidgetFrame(QFrame):
         super().__init__(parent)
         self._widget_id = widget_id
         self._content = None
+        self._row_span = row_span
+        self._col_span = col_span
         self.setObjectName("dashboardWidgetFrame")
 
         self._outer = QVBoxLayout(self)
@@ -105,67 +125,61 @@ class WidgetFrame(QFrame):
         header_layout.setContentsMargins(4, 0, 4, 0)
 
         # The drag handle is edit-only chrome; the title stays visible always
-        # so section headings ("Recent Events", ...) aren't lost outside edit mode.
-        # Drag-and-drop itself is handled by the grid container (see
+        # so section headings ("Recent Events", ...) aren't lost outside edit
+        # mode. Drag-and-drop itself is handled by the grid container (see
         # dashboard_grid_widget.py) so drops work both on empty space and on
         # other widgets - this frame doesn't accept drops itself.
         self._drag_handle = _DragHandle(self)
         header_layout.addWidget(self._drag_handle)
 
         title_label = QLabel(title)
-        title_label.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {theme.TEXT_SECONDARY};")
+        title_label.setStyleSheet(f"font-weight: 600; color: {theme.TEXT_SECONDARY};")
+        # Different widget titles are different lengths ("Monthly Expenses"
+        # vs "Net"). A QLabel's default size policy (Preferred, which still
+        # carries the Shrink flag) makes Qt's layout engine treat
+        # minimumSizeHint() - i.e. "wide enough to show the text unclipped" -
+        # as a hard floor; setMinimumWidth(0) does NOT override that (0 is
+        # already the unset default, so it's a no-op). Ignored is what
+        # actually tells the layout to disregard the text's natural width,
+        # so whichever column/row a long-titled widget lands in doesn't get
+        # forced wider/taller than the dashboard grid's fixed unit size (see
+        # dashboard_grid_widget.py). The label still shows full text when
+        # there's room; it just clips instead of pushing the grid around
+        # when there isn't.
+        title_label.setSizePolicy(QSizePolicy.Ignored, title_label.sizePolicy().verticalPolicy())
         header_layout.addWidget(title_label)
         header_layout.addStretch()
 
-        self._chrome = QWidget()
-        chrome_layout = QHBoxLayout(self._chrome)
-        chrome_layout.setContentsMargins(0, 0, 0, 0)
-
-        chrome_layout.addWidget(QLabel("Rows:"))
-        self._row_span_spin = QSpinBox()
-        self._row_span_spin.setRange(1, 8)
-        self._row_span_spin.setValue(row_span)
-        self._row_span_spin.valueChanged.connect(self._emit_span_changed)
-        chrome_layout.addWidget(self._row_span_spin)
-
-        chrome_layout.addWidget(QLabel("Cols:"))
-        self._col_span_spin = QSpinBox()
-        self._col_span_spin.setRange(1, 12)
-        self._col_span_spin.setValue(col_span)
-        self._col_span_spin.valueChanged.connect(self._emit_span_changed)
-        chrome_layout.addWidget(self._col_span_spin)
-
-        delete_btn = QPushButton()
-        delete_btn.setIcon(icons.icon("fa6s.xmark", color=theme.EXPENSE))
-        delete_btn.setToolTip("Delete widget")
-        delete_btn.setFixedWidth(28)
-        delete_btn.clicked.connect(lambda: self.delete_requested.emit(self._widget_id))
-        chrome_layout.addWidget(delete_btn)
-
-        header_layout.addWidget(self._chrome)
-
         self._outer.addWidget(header)
         self._drag_handle.setVisible(False)
-        self._chrome.setVisible(False)
         self.set_content(content)
 
+        # Both of these are edit-only overlays, positioned absolutely (see
+        # _reposition_overlays) so they never take layout space and never
+        # change the content area's size - unlike the row/col spinboxes this
+        # frame used to show in its header, which did.
         self._resize_handle = _ResizeHandle(self)
         self._resize_handle.setVisible(False)
-        self._reposition_resize_handle()
+
+        self._delete_btn = _DeleteButton(self)
+        self._delete_btn.clicked.connect(lambda: self.delete_requested.emit(self._widget_id))
+        self._delete_btn.setVisible(False)
+
+        self._reposition_overlays()
 
     def widget_id(self) -> str:
         return self._widget_id
 
     def row_span(self) -> int:
-        return self._row_span_spin.value()
+        return self._row_span
 
     def col_span(self) -> int:
-        return self._col_span_spin.value()
+        return self._col_span
 
     def set_edit_mode(self, enabled: bool):
-        self._chrome.setVisible(enabled)
         self._drag_handle.setVisible(enabled)
         self._resize_handle.setVisible(enabled)
+        self._delete_btn.setVisible(enabled)
 
     def set_drop_highlight(self, valid):
         """Highlights this frame as a swap target while something is being
@@ -179,36 +193,34 @@ class WidgetFrame(QFrame):
             self.setStyleSheet(f"QFrame#dashboardWidgetFrame {{ border: 2px dashed {theme.EXPENSE}; }}")
 
     def set_span_values(self, row_span: int, col_span: int):
-        self._row_span_spin.blockSignals(True)
-        self._col_span_spin.blockSignals(True)
-        self._row_span_spin.setValue(row_span)
-        self._col_span_spin.setValue(col_span)
-        self._row_span_spin.blockSignals(False)
-        self._col_span_spin.blockSignals(False)
+        self._row_span = row_span
+        self._col_span = col_span
 
     def preview_span(self, row_span: int, col_span: int):
-        """Live feedback while dragging the resize handle - updates the
-        spinbox numbers and emits resize_preview for a grid overlay highlight,
-        without touching the actual grid layout (too expensive to redo on
-        every mouse move)."""
+        """Live feedback while dragging the resize handle - emits
+        resize_preview for a grid overlay highlight, without touching the
+        actual grid layout (too expensive to redo on every mouse move)."""
         self.set_span_values(row_span, col_span)
         self.resize_preview.emit(self._widget_id, row_span, col_span)
 
     def commit_span(self):
-        self._emit_span_changed()
+        self.span_changed.emit(self._widget_id, self._row_span, self._col_span)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._reposition_resize_handle()
+        self._reposition_overlays()
 
-    def _reposition_resize_handle(self):
-        if not hasattr(self, "_resize_handle"):
-            return
+    def _reposition_overlays(self):
         margin = 2
-        x = max(self.width() - self._resize_handle.width() - margin, 0)
-        y = max(self.height() - self._resize_handle.height() - margin, 0)
-        self._resize_handle.move(x, y)
-        self._resize_handle.raise_()
+        if hasattr(self, "_resize_handle"):
+            x = max(self.width() - self._resize_handle.width() - margin, 0)
+            y = max(self.height() - self._resize_handle.height() - margin, 0)
+            self._resize_handle.move(x, y)
+            self._resize_handle.raise_()
+        if hasattr(self, "_delete_btn"):
+            x = max(self.width() - self._delete_btn.width() - margin, 0)
+            self._delete_btn.move(x, margin)
+            self._delete_btn.raise_()
 
     def set_content(self, content: QWidget):
         if self._content is not None:
@@ -217,6 +229,3 @@ class WidgetFrame(QFrame):
             self._content.deleteLater()
         self._content = content
         self._outer.addWidget(content, stretch=1)
-
-    def _emit_span_changed(self):
-        self.span_changed.emit(self._widget_id, self._row_span_spin.value(), self._col_span_spin.value())

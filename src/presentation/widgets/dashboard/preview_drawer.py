@@ -22,7 +22,7 @@ class PreviewDrawer(QFrame):
 
         layout = QVBoxLayout(self)
         self._title_label = QLabel("Preview")
-        self._title_label.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {theme.TEXT_SECONDARY};")
+        self._title_label.setStyleSheet(f"font-weight: 600; color: {theme.TEXT_SECONDARY};")
         layout.addWidget(self._title_label)
 
         self._body = QVBoxLayout()

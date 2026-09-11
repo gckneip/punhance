@@ -3,6 +3,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
     QTableWidgetItem, QDateEdit, QPushButton,
 )
+from src.presentation.widgets.even_columns_table import EvenColumnsTableWidget
 from PySide6.QtCore import QDate
 from PySide6.QtGui import QColor
 from src.domain.services.account_summary_service import AccountSummaryService
@@ -57,12 +58,12 @@ class AccountSummaryWidget(QWidget):
 
         layout.addLayout(cards_layout)
 
-        self._table = QTableWidget()
+        self._table = EvenColumnsTableWidget()
         self._table.setColumnCount(6)
         self._table.setHorizontalHeaderLabels(
             ["Account", "Type", "Initial Balance", "Income", "Expenses", "Current Balance"]
         )
-        self._table.horizontalHeader().setStretchLastSection(True)
+        self._table.setObjectName("mainTabTable")
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setAlternatingRowColors(True)

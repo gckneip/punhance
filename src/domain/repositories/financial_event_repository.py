@@ -29,6 +29,7 @@ class FinancialEventRepository(ABC):
         counterparty_id: Optional[str] = None,
         description: Optional[str] = None,
         recurring_event_id: Optional[str] = None,
+        credit_card_id: Optional[str] = None,
     ) -> List[FinancialEvent]:
         pass
 

@@ -110,7 +110,7 @@ class QuickAddBarWidget(QFrame):
         outer.setSpacing(6)
 
         hint = QLabel("Quick add")
-        hint.setStyleSheet(f"font-size: 11px; font-weight: 600; color: {theme.TEXT_SECONDARY};")
+        hint.setStyleSheet(f"font-size: {theme.SMALL_FONT_SIZE}px; font-weight: 600; color: {theme.TEXT_SECONDARY};")
         outer.addWidget(hint)
 
         row = QHBoxLayout()
@@ -145,7 +145,7 @@ class QuickAddBarWidget(QFrame):
         outer.addLayout(row)
 
         self._qa_status = QLabel("")
-        self._qa_status.setStyleSheet("font-size: 11px;")
+        self._qa_status.setStyleSheet(f"font-size: {theme.SMALL_FONT_SIZE}px;")
         outer.addWidget(self._qa_status)
 
     def focus(self):
@@ -209,7 +209,7 @@ class QuickAddBarWidget(QFrame):
         self.entry_added.emit()
 
     def _show_status(self, text: str, color: str, clear_after_ms: int = None):
-        self._qa_status.setStyleSheet(f"font-size: 11px; color: {color};")
+        self._qa_status.setStyleSheet(f"font-size: {theme.SMALL_FONT_SIZE}px; color: {color};")
         self._qa_status.setText(text)
         if clear_after_ms:
             QTimer.singleShot(clear_after_ms, lambda: self._qa_status.setText(""))

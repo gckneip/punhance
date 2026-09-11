@@ -6,7 +6,6 @@ from src.domain.entities.financial_event import FinancialEvent, EventType
 from src.domain.entities.purchase import Purchase, PaymentMethod
 from src.domain.entities.purchase_item import PurchaseItem
 from src.domain.entities.installment_plan import InstallmentPlan
-from src.domain.entities.installment import InstallmentStatus
 from src.domain.repositories.financial_event_repository import FinancialEventRepository
 from src.domain.repositories.purchase_repository import PurchaseRepository
 from src.domain.repositories.installment_plan_repository import InstallmentPlanRepository
@@ -64,6 +63,7 @@ class PurchaseUseCases:
                 description=dto.description,
                 amount=dto.total_amount,
                 category_id=category_id,
+                credit_card_id=dto.credit_card_id if dto.payment_method == PaymentMethod.CREDIT_CARD else None,
                 counterparty_id=dto.counterparty_id,
                 notes=dto.notes,
             )
@@ -146,6 +146,7 @@ class PurchaseUseCases:
                 event.event_date = dto.event_date
                 event.description = dto.description
                 event.amount = dto.total_amount
+                event.credit_card_id = dto.credit_card_id if dto.payment_method == PaymentMethod.CREDIT_CARD else None
                 event.counterparty_id = dto.counterparty_id
                 event.notes = dto.notes
                 event.updated_at = datetime.now().isoformat()
@@ -169,15 +170,8 @@ class PurchaseUseCases:
                 )
             )
             if existing_plan is not None and plan_changed:
-                old_installments = self._installment_repo.find_by_plan(existing_plan.id)
-                if any(i.status == InstallmentStatus.PAID for i in old_installments):
-                    plan_changed = False
-                    warnings.append(
-                        "Installment plan was not changed: some installments are already paid."
-                    )
-                else:
-                    self._installment_repo.delete_by_plan(existing_plan.id, commit=False)
-                    self._plan_repo.delete(existing_plan.id, commit=False)
+                self._installment_repo.delete_by_plan(existing_plan.id, commit=False)
+                self._plan_repo.delete(existing_plan.id, commit=False)
 
             if plan_changed and should_have_plan:
                 new_plan = InstallmentPlan(

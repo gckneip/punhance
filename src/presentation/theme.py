@@ -27,6 +27,32 @@ CHART_CATEGORICAL = [
     "#e34948",  # red
 ]
 
+# The original design was tuned at a 13px base (small text at 11px, the big
+# stat-card value at 20px) - these ratios are pinned to that reference point
+# forever, independent of whatever the *default* base size is, so relative
+# proportions stay correct at any size the user picks.
+_REFERENCE_BASE_FONT_SIZE = 13
+_SMALL_FONT_RATIO = 11 / _REFERENCE_BASE_FONT_SIZE
+_STAT_VALUE_FONT_RATIO = 20 / _REFERENCE_BASE_FONT_SIZE
+
+DEFAULT_BASE_FONT_SIZE = 20
+
+BASE_FONT_SIZE = DEFAULT_BASE_FONT_SIZE
+SMALL_FONT_SIZE = round(DEFAULT_BASE_FONT_SIZE * _SMALL_FONT_RATIO)
+STAT_VALUE_FONT_SIZE = round(DEFAULT_BASE_FONT_SIZE * _STAT_VALUE_FONT_RATIO)
+
+
+def load_font_size(base_size: int) -> None:
+    """Mutate this module's font-size globals from a single base size (the
+    normal-text size). The couple of other sizes used in the app (small/
+    secondary text, the big stat-card value) scale proportionally to it, so
+    the user only ever picks one number. Same restart-only timing rule as
+    load_palette() - call before any widget is constructed."""
+    global BASE_FONT_SIZE, SMALL_FONT_SIZE, STAT_VALUE_FONT_SIZE
+    BASE_FONT_SIZE = base_size
+    SMALL_FONT_SIZE = round(base_size * _SMALL_FONT_RATIO)
+    STAT_VALUE_FONT_SIZE = round(base_size * _STAT_VALUE_FONT_RATIO)
+
 
 def load_palette(palette) -> None:
     """Mutate this module's color globals from a ThemePalette.
@@ -81,10 +107,19 @@ def build_stylesheet() -> str:
     alt_row_bg = _mix(SURFACE, BORDER, 0.15)
     header_bg = _mix(SURFACE, BORDER, 0.3)
 
+    # The full-page tables on the non-Dashboard tabs (Events, Accounts, ...)
+    # get a fixed bump over the app's base text size, plus roomier padding to
+    # match, so the table reads as filling the page rather than just having
+    # its columns stretched with the same small text as everywhere else.
+    table_font_ratio = 1.2
+    table_font_size = round(BASE_FONT_SIZE * table_font_ratio)
+    table_item_padding = round(4 * table_font_ratio)
+    table_header_padding = round(6 * table_font_ratio)
+
     return f"""
 * {{
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-    font-size: 13px;
+    font-size: {BASE_FONT_SIZE}px;
     color: {TEXT_PRIMARY};
 }}
 
@@ -116,23 +151,26 @@ QTabWidget::pane {{
 }}
 
 QTabBar::tab {{
-    background: transparent;
+    background: {SURFACE};
     color: {TEXT_SECONDARY};
     padding: 8px 16px;
     margin-right: 2px;
-}}
-
-QTabBar::tab:selected {{
-    background: {SURFACE};
-    color: {TEXT_PRIMARY};
-    font-weight: 600;
     border: 1px solid {BORDER};
     border-bottom: none;
     border-top-left-radius: 6px;
     border-top-right-radius: 6px;
 }}
 
+QTabBar::tab:selected {{
+    background: transparent;
+    color: {TEXT_PRIMARY};
+    font-weight: 600;
+    border-color: {BORDER};
+}}
+
 QTabBar::tab:hover:!selected {{
+    background: {hover_bg};
+    border-color: {BORDER};
     color: {TEXT_PRIMARY};
 }}
 
@@ -226,12 +264,12 @@ QFrame#statCard {{
 
 QLabel#statCardTitle {{
     color: {TEXT_SECONDARY};
-    font-size: 11px;
+    font-size: {SMALL_FONT_SIZE}px;
     font-weight: 600;
 }}
 
 QLabel#statCardValue {{
-    font-size: 20px;
+    font-size: {STAT_VALUE_FONT_SIZE}px;
     font-weight: 700;
 }}
 
@@ -271,5 +309,18 @@ QListWidget#sidebarNav::item:selected {{
 QListWidget#sidebarNav::item:hover:!selected {{
     background: {hover_bg};
     color: {TEXT_PRIMARY};
+}}
+
+QTableWidget#mainTabTable {{
+    font-size: {table_font_size}px;
+}}
+
+QTableWidget#mainTabTable::item {{
+    padding: {table_item_padding}px;
+}}
+
+QTableWidget#mainTabTable QHeaderView::section {{
+    font-size: {table_font_size}px;
+    padding: {table_header_padding}px;
 }}
 """

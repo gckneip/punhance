@@ -57,10 +57,18 @@ class AccountSummaryService:
                 bucket(e.destination_account_id)["income"] += e.amount
             elif e.event_type in (EventType.INCOME, EventType.REFUND):
                 bucket(e.account_id)["income"] += e.amount
+            elif e.event_type == EventType.CARD_PAYMENT:
+                bucket(e.account_id)["expenses"] += e.amount
             elif e.event_type in (
-                EventType.EXPENSE, EventType.PURCHASE, EventType.CARD_PAYMENT,
+                EventType.EXPENSE, EventType.PURCHASE,
                 EventType.LOAN_PAYMENT, EventType.INVESTMENT,
             ):
+                if e.credit_card_id:
+                    # Charged to a credit card, not a bank account - this
+                    # isn't a real account outflow yet. It becomes one later,
+                    # when the card bill is paid (see CreditCardUseCases.pay_card),
+                    # which creates its own CARD_PAYMENT event against a real account.
+                    continue
                 bucket(e.account_id)["expenses"] += e.amount
 
         summary = AccountSummary()

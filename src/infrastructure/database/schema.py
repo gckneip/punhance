@@ -118,6 +118,14 @@ def create_tables(conn):
 
         CREATE INDEX IF NOT EXISTS idx_dashboard_widgets_dashboard_id ON dashboard_widgets(dashboard_id);
 
+        CREATE TABLE IF NOT EXISTS dashboard_reports (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT,
+            updated_at TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS recurring_events (
             id TEXT PRIMARY KEY,
             event_type TEXT NOT NULL,
@@ -253,6 +261,24 @@ def _migrate(conn):
         if "merchant_name" in purchase_columns:
             conn.execute("ALTER TABLE purchases DROP COLUMN merchant_name")
             conn.commit()
+
+        # Backfill credit_card_id onto purchase events created before it was
+        # tracked directly on financial_events (it used to live only on the
+        # purchases row) - account_summary_service needs it on the event
+        # itself to exclude credit-card charges from bank account totals.
+        conn.execute(
+            """UPDATE financial_events
+               SET credit_card_id = (
+                   SELECT credit_card_id FROM purchases
+                   WHERE purchases.financial_event_id = financial_events.id
+               )
+               WHERE event_type = 'purchase'
+                 AND credit_card_id IS NULL
+                 AND id IN (
+                     SELECT financial_event_id FROM purchases WHERE credit_card_id IS NOT NULL
+                 )"""
+        )
+        conn.commit()
 
     cursor = conn.execute("PRAGMA table_info(installment_plans)")
     plan_columns = [row[1] for row in cursor.fetchall()]

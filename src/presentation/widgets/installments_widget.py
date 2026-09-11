@@ -1,8 +1,9 @@
 from typing import List, Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QComboBox, QLabel, QMessageBox,
+    QPushButton, QComboBox, QLabel,
 )
+from src.presentation.widgets.even_columns_table import EvenColumnsTableWidget
 from PySide6.QtGui import QColor
 from src.application.dto.installment_dto import InstallmentDTO
 from src.application.dto.credit_card_dto import CreditCardDTO
@@ -28,7 +29,7 @@ class InstallmentsWidget(QWidget):
         filter_row.addWidget(self._card_combo)
 
         self._status_combo = QComboBox()
-        self._status_combo.addItems(["All", "pending", "paid", "overdue", "cancelled"])
+        self._status_combo.addItems(["All", "pending", "overdue"])
         filter_row.addWidget(QLabel("Status:"))
         filter_row.addWidget(self._status_combo)
 
@@ -36,19 +37,15 @@ class InstallmentsWidget(QWidget):
         self._btn_refresh.clicked.connect(self.refresh)
         filter_row.addWidget(self._btn_refresh)
 
-        self._btn_mark_paid = QPushButton("Mark Selected as Paid")
-        self._btn_mark_paid.clicked.connect(self._mark_selected_paid)
-        filter_row.addWidget(self._btn_mark_paid)
-
         filter_row.addStretch()
         layout.addLayout(filter_row)
 
-        self._table = QTableWidget()
+        self._table = EvenColumnsTableWidget()
         self._table.setColumnCount(6)
         self._table.setHorizontalHeaderLabels(
             ["Due Date", "Installment", "Amount", "Status", "Plan ID", "ID"]
         )
-        self._table.horizontalHeader().setStretchLastSection(True)
+        self._table.setObjectName("mainTabTable")
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
@@ -90,13 +87,3 @@ class InstallmentsWidget(QWidget):
             self._table.setItem(i, 5, QTableWidgetItem(inst.id))
 
         self._table.resizeColumnsToContents()
-
-    def _mark_selected_paid(self):
-        rows = sorted({idx.row() for idx in self._table.selectedIndexes()})
-        if not rows:
-            QMessageBox.information(self, "Info", "Select an installment to mark as paid.")
-            return
-        for row in rows:
-            if row < len(self._installments):
-                self._installment_use_cases.mark_as_paid(self._installments[row].id)
-        self.refresh()

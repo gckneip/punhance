@@ -23,3 +23,7 @@ class DashboardWidgetRepository(ABC):
     @abstractmethod
     def delete(self, widget_id: str) -> None:
         pass
+
+    @abstractmethod
+    def delete_by_dashboard_id(self, dashboard_id: str) -> None:
+        pass

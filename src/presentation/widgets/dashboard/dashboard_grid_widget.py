@@ -225,6 +225,7 @@ class DashboardGridWidget(QWidget):
         chart_data_service,
         financial_event_use_cases=None,
         purchase_use_cases=None,
+        dashboard_id="default",
         parent=None,
     ):
         super().__init__(parent)
@@ -232,6 +233,7 @@ class DashboardGridWidget(QWidget):
         self._chart_data_service = chart_data_service
         self._financial_event_use_cases = financial_event_use_cases
         self._purchase_use_cases = purchase_use_cases
+        self._dashboard_id = dashboard_id
 
         self._edit_mode = False
         self._widgets: List = []
@@ -296,7 +298,7 @@ class DashboardGridWidget(QWidget):
             purchases=purchases, multi_category_event_ids=multi_category_event_ids,
             credit_cards=credit_cards, installments_by_event=installments_by_event,
         )
-        self._widgets = self._layout_use_cases.list_widgets()
+        self._widgets = self._layout_use_cases.list_widgets(self._dashboard_id)
         if not self._frames:
             self._rebuild_layout()
         else:
@@ -408,7 +410,7 @@ class DashboardGridWidget(QWidget):
         if reply != QMessageBox.Yes:
             return
         self._layout_use_cases.delete_widget(widget_id)
-        self._widgets = self._layout_use_cases.list_widgets()
+        self._widgets = self._layout_use_cases.list_widgets(self._dashboard_id)
         self._rebuild_layout()
 
     def _on_resize_preview(self, widget_id: str, row_span: int, col_span: int):
@@ -439,7 +441,7 @@ class DashboardGridWidget(QWidget):
                 grid_row_span=row_span, grid_col_span=col_span, sort_order=dto.sort_order,
             )
         ])
-        self._widgets = self._layout_use_cases.list_widgets()
+        self._widgets = self._layout_use_cases.list_widgets(self._dashboard_id)
         self._rebuild_layout()
 
     def _check_move_fits(self, widget_id: str, row: int, col: int, row_span: int, col_span: int) -> bool:
@@ -476,7 +478,7 @@ class DashboardGridWidget(QWidget):
                     sort_order=dto.sort_order,
                 )
             ])
-            self._widgets = self._layout_use_cases.list_widgets()
+            self._widgets = self._layout_use_cases.list_widgets(self._dashboard_id)
             self._rebuild_layout()
             return
 
@@ -514,7 +516,7 @@ class DashboardGridWidget(QWidget):
                 sort_order=target.sort_order,
             ),
         ])
-        self._widgets = self._layout_use_cases.list_widgets()
+        self._widgets = self._layout_use_cases.list_widgets(self._dashboard_id)
         self._rebuild_layout()
 
     def _on_add_widget(self):
@@ -545,6 +547,7 @@ class DashboardGridWidget(QWidget):
             sort_order=len(self._widgets),
             config=result["config"],
             source_preset_id=result.get("source_preset_id"),
+            dashboard_id=self._dashboard_id,
         ))
-        self._widgets = self._layout_use_cases.list_widgets()
+        self._widgets = self._layout_use_cases.list_widgets(self._dashboard_id)
         self._rebuild_layout()

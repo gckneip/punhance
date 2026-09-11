@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import Optional
 from datetime import date
 
 
@@ -10,5 +10,4 @@ class CreateCardPaymentDTO:
     amount: float
     account_id: str
     credit_card_id: str
-    installment_ids: List[str] = field(default_factory=list)
     notes: Optional[str] = None

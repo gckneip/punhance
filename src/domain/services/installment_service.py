@@ -43,8 +43,8 @@ class InstallmentService:
         self,
         installments: List[Installment],
     ) -> float:
-        return sum(
-            i.amount
-            for i in installments
-            if i.status in (InstallmentStatus.PENDING, InstallmentStatus.OVERDUE)
-        )
+        # Installments have no "paid" concept: they're charges against the
+        # card that raise its debt the moment they're generated, regardless
+        # of status. Debt only goes down via an actual card payment (see
+        # CreditCardService.get_status), not by flagging an installment.
+        return sum(i.amount for i in installments)

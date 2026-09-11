@@ -1,3 +1,4 @@
+from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMenu,
@@ -24,6 +25,7 @@ from src.application.dto.recurring_event_dto import CreateRecurringEventDTO
 from src.domain.entities.purchase import PaymentMethod
 from src.domain.entities.app_settings import NavigationStyle
 from src.application.use_cases.dashboard_layout_use_cases import DashboardLayoutUseCases
+from src.application.use_cases.dashboard_report_use_cases import DashboardReportUseCases
 from src.application.use_cases.app_settings_use_cases import AppSettingsUseCases
 from src.domain.services.chart_data_service import ChartDataService
 from src.presentation.dialogs.account_dialog import AccountDialog
@@ -41,11 +43,12 @@ from src.application.dto.homebank_dto import HomeBankExportOptionsDTO
 from src.application.use_cases.theme_use_cases import ThemeUseCases
 from src.infrastructure.theming.theme_parser import ThemeParseError
 from src.presentation.app_restart import restart_app
-from src.presentation.widgets.dashboard.dashboard_grid_widget import DashboardGridWidget
+from src.presentation.widgets.dashboard.dashboard_tabs_widget import DashboardTabsWidget
 from src.presentation.widgets.installments_widget import InstallmentsWidget
 from src.presentation.widgets.category_breakdown_widget import CategoryBreakdownWidget
 from src.presentation.widgets.account_summary_widget import AccountSummaryWidget
 from src.presentation.widgets.nav_host import TabNavHost, SidebarNavHost
+from src.presentation.widgets.even_columns_table import EvenColumnsTableWidget
 from src.presentation import icons, theme
 
 
@@ -61,6 +64,7 @@ class MainWindow(QMainWindow):
         installment_use_cases: InstallmentUseCases,
         recurring_event_use_cases: RecurringEventUseCases,
         dashboard_layout_use_cases: DashboardLayoutUseCases,
+        dashboard_report_use_cases: DashboardReportUseCases,
         app_settings_use_cases: AppSettingsUseCases,
         chart_data_service: ChartDataService,
         category_breakdown_service=None,
@@ -92,8 +96,9 @@ class MainWindow(QMainWindow):
         self._navigation_style = app_settings_use_cases.get_navigation_style()
         self._build_ui()
 
-        self._dashboard = DashboardGridWidget(
-            dashboard_layout_use_cases, chart_data_service, financial_event_use_cases, purchase_use_cases
+        self._dashboard = DashboardTabsWidget(
+            dashboard_report_use_cases, dashboard_layout_use_cases, chart_data_service,
+            financial_event_use_cases, purchase_use_cases,
         )
         self._dashboard.entry_added.connect(self._refresh_all)
         self._dashboard.edit_event_requested.connect(self._edit_event)
@@ -121,8 +126,9 @@ class MainWindow(QMainWindow):
             color = action[3] if len(action) > 3 else None
             btn = QPushButton()
             btn.setIcon(icons.icon(icon_name, color=color))
+            btn.setIconSize(QSize(18, 18))
             btn.setToolTip(label)
-            btn.setFixedWidth(32)
+            btn.setFixedSize(36, 36)
             btn.clicked.connect(handler)
             layout.addWidget(btn)
         layout.addStretch()
@@ -163,7 +169,11 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(toolbar)
 
-        self._tabs = TabNavHost() if self._navigation_style == NavigationStyle.TABS else SidebarNavHost()
+        if self._navigation_style == NavigationStyle.TABS:
+            self._tabs = TabNavHost()
+        else:
+            self._tabs = SidebarNavHost(mode=self._app_settings_use_cases.get_sidebar_mode())
+            self._tabs.mode_changed.connect(self._app_settings_use_cases.set_sidebar_mode)
         layout.addWidget(self._tabs)
 
         self._build_events_tab()
@@ -253,12 +263,12 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(filter_row)
 
-        self._events_table = QTableWidget()
-        self._events_table.setColumnCount(11)
+        self._events_table = EvenColumnsTableWidget()
+        self._events_table.setColumnCount(10)
         self._events_table.setHorizontalHeaderLabels(
-            ["Date", "Type", "Description", "Amount", "Currency", "Category", "Account", "Counterparty", "Notes", "ID", "Actions"]
+            ["Date", "Type", "Description", "Amount", "Currency", "Category", "Account", "Counterparty", "Notes", "Actions"]
         )
-        self._events_table.horizontalHeader().setStretchLastSection(True)
+        self._events_table.setObjectName("mainTabTable")
         self._events_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._events_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._events_table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -279,12 +289,12 @@ class MainWindow(QMainWindow):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
-        self._accounts_table = QTableWidget()
+        self._accounts_table = EvenColumnsTableWidget()
         self._accounts_table.setColumnCount(5)
         self._accounts_table.setHorizontalHeaderLabels(
             ["Name", "Type", "Initial Balance", "ID", "Actions"]
         )
-        self._accounts_table.horizontalHeader().setStretchLastSection(True)
+        self._accounts_table.setObjectName("mainTabTable")
         self._accounts_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._accounts_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._accounts_table.setAlternatingRowColors(True)
@@ -304,12 +314,12 @@ class MainWindow(QMainWindow):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
-        self._categories_table = QTableWidget()
+        self._categories_table = EvenColumnsTableWidget()
         self._categories_table.setColumnCount(4)
         self._categories_table.setHorizontalHeaderLabels(
             ["Name", "Color", "Parent", "Actions"]
         )
-        self._categories_table.horizontalHeader().setStretchLastSection(True)
+        self._categories_table.setObjectName("mainTabTable")
         self._categories_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._categories_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._categories_table.setAlternatingRowColors(True)
@@ -329,10 +339,10 @@ class MainWindow(QMainWindow):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
-        self._counterparties_table = QTableWidget()
+        self._counterparties_table = EvenColumnsTableWidget()
         self._counterparties_table.setColumnCount(3)
         self._counterparties_table.setHorizontalHeaderLabels(["Name", "ID", "Actions"])
-        self._counterparties_table.horizontalHeader().setStretchLastSection(True)
+        self._counterparties_table.setObjectName("mainTabTable")
         self._counterparties_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._counterparties_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._counterparties_table.setAlternatingRowColors(True)
@@ -358,12 +368,12 @@ class MainWindow(QMainWindow):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
-        self._credit_cards_table = QTableWidget()
+        self._credit_cards_table = EvenColumnsTableWidget()
         self._credit_cards_table.setColumnCount(9)
         self._credit_cards_table.setHorizontalHeaderLabels(
             ["Name", "Issuer", "Credit Limit", "Closing Day", "Due Day", "Active", "Current Debt", "Available Credit", "Actions"]
         )
-        self._credit_cards_table.horizontalHeader().setStretchLastSection(True)
+        self._credit_cards_table.setObjectName("mainTabTable")
         self._credit_cards_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._credit_cards_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._credit_cards_table.setAlternatingRowColors(True)
@@ -389,12 +399,12 @@ class MainWindow(QMainWindow):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
-        self._recurring_events_table = QTableWidget()
+        self._recurring_events_table = EvenColumnsTableWidget()
         self._recurring_events_table.setColumnCount(9)
         self._recurring_events_table.setHorizontalHeaderLabels(
             ["Description", "Amount", "Frequency", "Anchor", "Start", "End", "Active", "ID", "Actions"]
         )
-        self._recurring_events_table.horizontalHeader().setStretchLastSection(True)
+        self._recurring_events_table.setObjectName("mainTabTable")
         self._recurring_events_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._recurring_events_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._recurring_events_table.setAlternatingRowColors(True)
@@ -556,22 +566,15 @@ class MainWindow(QMainWindow):
         from src.presentation.dialogs.card_payment_dialog import CardPaymentDialog
 
         accounts = self._account_use_cases.list_accounts()
-        installments = self._installment_use_cases.list_installments(
-            credit_card_id=card.id,
-        )
-        pending = [i for i in installments if i.status in ("pending", "overdue")]
 
-        dialog = CardPaymentDialog(
-            accounts, pending, status.current_debt, card.name, self
-        )
+        dialog = CardPaymentDialog(accounts, status.current_debt, card.name, self)
         if dialog.exec():
             data = dialog.get_data()
             confirm = QMessageBox.question(
                 self,
                 "Confirm Payment",
                 f"Pay R$ {data['amount']:.2f} for {card.name}?\n"
-                "This will debit the selected account and mark the chosen "
-                "installments as paid.",
+                "This will debit the selected account and reduce the card's debt.",
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No,
             )
@@ -583,7 +586,6 @@ class MainWindow(QMainWindow):
                 amount=data["amount"],
                 account_id=data["account_id"],
                 credit_card_id=card.id,
-                installment_ids=data["installment_ids"],
                 notes=data["notes"],
             )
             result = self._credit_card_use_cases.pay_card(dto)
@@ -653,11 +655,17 @@ class MainWindow(QMainWindow):
         accounts = self._account_use_cases.list_accounts()
         categories = self._category_use_cases.list_categories()
         counterparties = self._counterparty_use_cases.list_counterparties()
+        credit_cards = self._credit_card_use_cases.list_cards()
 
-        dialog = EventDialog(accounts, categories, counterparties, self, event=occurrence)
+        def create_counterparty(name):
+            dto = self._counterparty_use_cases.create_counterparty(CreateCounterpartyDTO(name=name))
+            self._refresh_counterparties()
+            return dto
+
+        dialog = EventDialog(accounts, categories, counterparties, credit_cards, create_counterparty, self, event=occurrence)
         if dialog.exec():
             data = dialog.get_data()
-            dto = CreateFinancialEventDTO(credit_card_id=occurrence.credit_card_id, **data)
+            dto = CreateFinancialEventDTO(**data)
             self._recurring_event_use_cases.confirm_occurrence(
                 occurrence.recurring_event_id, occurrence.occurrence_date, dto
             )
@@ -680,8 +688,14 @@ class MainWindow(QMainWindow):
         accounts = self._account_use_cases.list_accounts()
         categories = self._category_use_cases.list_categories()
         counterparties = self._counterparty_use_cases.list_counterparties()
+        credit_cards = self._credit_card_use_cases.list_cards()
 
-        dialog = EventDialog(accounts, categories, counterparties, self)
+        def create_counterparty(name):
+            dto = self._counterparty_use_cases.create_counterparty(CreateCounterpartyDTO(name=name))
+            self._refresh_counterparties()
+            return dto
+
+        dialog = EventDialog(accounts, categories, counterparties, credit_cards, create_counterparty, self)
         if dialog.exec():
             data = dialog.get_data()
             dto = CreateFinancialEventDTO(**data)
@@ -692,8 +706,14 @@ class MainWindow(QMainWindow):
         accounts = self._account_use_cases.list_accounts()
         categories = self._category_use_cases.list_categories()
         counterparties = self._counterparty_use_cases.list_counterparties()
+        credit_cards = self._credit_card_use_cases.list_cards()
 
-        dialog = EventDialog(accounts, categories, counterparties, self)
+        def create_counterparty(name):
+            dto = self._counterparty_use_cases.create_counterparty(CreateCounterpartyDTO(name=name))
+            self._refresh_counterparties()
+            return dto
+
+        dialog = EventDialog(accounts, categories, counterparties, credit_cards, create_counterparty, self)
         index = dialog.type_combo.findText("transfer")
         if index >= 0:
             dialog.type_combo.setCurrentIndex(index)
@@ -755,9 +775,10 @@ class MainWindow(QMainWindow):
     def _open_settings(self):
         current_style = self._app_settings_use_cases.get_navigation_style()
         current_theme_id = self._app_settings_use_cases.get_current_theme_id()
+        current_font_size = self._app_settings_use_cases.get_base_font_size()
         available_themes = self._theme_use_cases.list_available_themes() if self._theme_use_cases else []
 
-        dialog = SettingsDialog(current_style, current_theme_id, available_themes, self)
+        dialog = SettingsDialog(current_style, current_theme_id, available_themes, current_font_size, self)
         dialog.import_theme_requested.connect(lambda: self._handle_theme_import(dialog))
         if dialog.exec():
             data = dialog.get_data()
@@ -766,6 +787,8 @@ class MainWindow(QMainWindow):
                 changes.append("navigation style")
             if data["theme_id"] and data["theme_id"] != current_theme_id:
                 changes.append("theme")
+            if data["base_font_size"] != current_font_size:
+                changes.append("font size")
 
             if not changes:
                 return
@@ -787,6 +810,8 @@ class MainWindow(QMainWindow):
                 self._app_settings_use_cases.set_navigation_style(data["navigation_style"])
             if data["theme_id"] and data["theme_id"] != current_theme_id:
                 self._app_settings_use_cases.set_current_theme_id(data["theme_id"])
+            if data["base_font_size"] != current_font_size:
+                self._app_settings_use_cases.set_base_font_size(data["base_font_size"])
             restart_app()
 
     def _handle_theme_import(self, dialog):
@@ -826,11 +851,17 @@ class MainWindow(QMainWindow):
         accounts = self._account_use_cases.list_accounts()
         categories = self._category_use_cases.list_categories()
         counterparties = self._counterparty_use_cases.list_counterparties()
+        credit_cards = self._credit_card_use_cases.list_cards()
 
-        dialog = EventDialog(accounts, categories, counterparties, self, event=event)
+        def create_counterparty(name):
+            dto = self._counterparty_use_cases.create_counterparty(CreateCounterpartyDTO(name=name))
+            self._refresh_counterparties()
+            return dto
+
+        dialog = EventDialog(accounts, categories, counterparties, credit_cards, create_counterparty, self, event=event)
         if dialog.exec():
             data = dialog.get_data()
-            dto = CreateFinancialEventDTO(credit_card_id=event.credit_card_id, **data)
+            dto = CreateFinancialEventDTO(**data)
             self._financial_event_use_cases.update_event(event_id, dto)
             self._refresh_all()
 
@@ -903,12 +934,8 @@ class MainWindow(QMainWindow):
 
     def _delete_selected_events(self):
         rows = sorted({idx.row() for idx in self._events_table.selectionModel().selectedRows()})
-        event_ids = [
-            self._events_table.item(r, 9).text()
-            for r in rows
-            if self._events_table.item(r, 9) is not None
-            and not self._events_table.item(r, 9).text().startswith("virtual:")
-        ]
+        row_ids = [self._events_table.item(r, 0).data(Qt.UserRole) for r in rows if self._events_table.item(r, 0) is not None]
+        event_ids = [row_id for row_id in row_ids if row_id and not row_id.startswith("virtual:")]
         if not event_ids:
             return
         reply = QMessageBox.question(
@@ -923,6 +950,86 @@ class MainWindow(QMainWindow):
         for event_id in event_ids:
             self._delete_event_cascade(event_id)
         self._refresh_all()
+
+    def _duplicate_event(self, event_id):
+        events = {e.id: e for e in self._financial_event_use_cases.list_events()}
+        event = events.get(event_id)
+        if event is None:
+            return
+
+        if event.event_type == "purchase":
+            self._duplicate_purchase(event_id)
+            return
+
+        accounts = self._account_use_cases.list_accounts()
+        categories = self._category_use_cases.list_categories()
+        counterparties = self._counterparty_use_cases.list_counterparties()
+        credit_cards = self._credit_card_use_cases.list_cards()
+
+        def create_counterparty(name):
+            dto = self._counterparty_use_cases.create_counterparty(CreateCounterpartyDTO(name=name))
+            self._refresh_counterparties()
+            return dto
+
+        dialog = EventDialog(
+            accounts, categories, counterparties, credit_cards, create_counterparty, self,
+            event=event, duplicate=True,
+        )
+        if dialog.exec():
+            data = dialog.get_data()
+            dto = CreateFinancialEventDTO(**data)
+            self._financial_event_use_cases.create_event(dto)
+            self._refresh_all()
+
+    def _duplicate_purchase(self, event_id):
+        purchase_data = self._purchase_use_cases.get_purchase_by_event(event_id)
+        if purchase_data is None:
+            return
+
+        categories = self._category_use_cases.list_categories()
+        credit_cards = self._credit_card_use_cases.list_cards()
+        counterparties = self._counterparty_use_cases.list_counterparties()
+
+        def create_counterparty(name):
+            dto = self._counterparty_use_cases.create_counterparty(CreateCounterpartyDTO(name=name))
+            self._refresh_counterparties()
+            return dto
+
+        dialog = PurchaseDialog(
+            categories, credit_cards, counterparties, create_counterparty, self,
+            purchase_data=purchase_data, duplicate=True,
+        )
+        if dialog.exec():
+            data = dialog.get_data()
+            items = [
+                CreatePurchaseItemDTO(
+                    name=i["name"],
+                    quantity=i["quantity"],
+                    unit=i["unit"],
+                    unit_price=i["unit_price"],
+                    total_price=i["total_price"],
+                    category_id=i["category_id"],
+                )
+                for i in data["items"]
+            ]
+
+            dto = CreatePurchaseDTO(
+                event_date=data["event_date"],
+                description=data["description"],
+                total_amount=data["total_amount"],
+                payment_method=PaymentMethod(data["payment_method"]),
+                credit_card_id=data["credit_card_id"],
+                notes=data["notes"],
+                installment_count=data["installment_count"],
+                remainder_on_first=data["remainder_on_first"],
+                counterparty_id=data["counterparty_id"],
+                category_id=data["category_id"],
+                items=items,
+            )
+            result = self._purchase_use_cases.create_purchase(dto)
+            if result.get("warnings"):
+                QMessageBox.warning(self, "Purchase Warning", "\n".join(result["warnings"]))
+            self._refresh_all()
 
     def _add_purchase(self):
         categories = self._category_use_cases.list_categories()
@@ -1052,6 +1159,7 @@ class MainWindow(QMainWindow):
                 )
 
         self._events_table.resizeColumnsToContents()
+        self._events_table.resizeRowsToContents()
 
     def _populate_real_event_row(self, i, e, categories_map, accounts_map, counterparties_map, multi_category_event_ids):
         self._events_table.setItem(i, 0, QTableWidgetItem(e.event_date.isoformat()))
@@ -1074,9 +1182,10 @@ class MainWindow(QMainWindow):
         cp_name = counterparties_map.get(e.counterparty_id, str(e.counterparty_id or ""))
         self._events_table.setItem(i, 7, QTableWidgetItem(cp_name))
         self._events_table.setItem(i, 8, QTableWidgetItem(e.notes or ""))
-        self._events_table.setItem(i, 9, QTableWidgetItem(e.id))
-        self._events_table.setCellWidget(i, 10, self._make_actions_widget([
+        self._events_table.item(i, 0).setData(Qt.UserRole, e.id)
+        self._events_table.setCellWidget(i, 9, self._make_actions_widget([
             ("Edit", "fa6s.pen", lambda _, event_id=e.id: self._edit_event(event_id)),
+            ("Duplicate", "fa6s.copy", lambda _, event_id=e.id: self._duplicate_event(event_id)),
             ("Delete", "fa6s.trash", lambda _, event_id=e.id: self._delete_event(event_id), theme.EXPENSE),
         ]))
 
@@ -1098,10 +1207,10 @@ class MainWindow(QMainWindow):
         self._events_table.setItem(i, 6, _item(accounts_map.get(o.account_id, str(o.account_id or ""))))
         self._events_table.setItem(i, 7, _item(counterparties_map.get(o.counterparty_id, str(o.counterparty_id or ""))))
         self._events_table.setItem(i, 8, _item(o.notes or ""))
-        self._events_table.setItem(
-            i, 9, _item(f"virtual:{o.recurring_event_id}:{o.occurrence_date.isoformat()}")
+        self._events_table.item(i, 0).setData(
+            Qt.UserRole, f"virtual:{o.recurring_event_id}:{o.occurrence_date.isoformat()}"
         )
-        self._events_table.setCellWidget(i, 10, self._make_actions_widget([
+        self._events_table.setCellWidget(i, 9, self._make_actions_widget([
             ("Confirm", "fa6s.check", lambda _, occ=o: self._confirm_occurrence(occ), theme.INCOME),
             (
                 "Skip", "fa6s.forward-step",
@@ -1130,6 +1239,7 @@ class MainWindow(QMainWindow):
                 ("Delete", "fa6s.trash", lambda _, rid=r.id: self._delete_recurring_event(rid), theme.EXPENSE),
             ]))
         self._recurring_events_table.resizeColumnsToContents()
+        self._recurring_events_table.resizeRowsToContents()
 
     def _refresh_accounts(self):
         accounts = self._account_use_cases.list_accounts()
