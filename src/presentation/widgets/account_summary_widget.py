@@ -1,12 +1,11 @@
-from datetime import date, timedelta
+from datetime import timedelta
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
-    QTableWidgetItem, QDateEdit, QPushButton,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
 )
 from src.presentation.widgets.even_columns_table import EvenColumnsTableWidget
-from PySide6.QtCore import QDate
 from PySide6.QtGui import QColor
 from src.domain.services.account_summary_service import AccountSummaryService
+from src.presentation.widgets.date_range_selector import DateRangeSelector
 from src.presentation.widgets.stat_card import make_stat_card
 from src.presentation import theme
 
@@ -23,23 +22,10 @@ class AccountSummaryWidget(QWidget):
         layout.setSpacing(12)
 
         filter_row = QHBoxLayout()
-
-        self._date_from = QDateEdit()
-        self._date_from.setCalendarPopup(True)
-        self._date_from.setDate(QDate(2000, 1, 1))
-        filter_row.addWidget(QLabel("From:"))
-        filter_row.addWidget(self._date_from)
-
-        self._date_to = QDateEdit()
-        self._date_to.setCalendarPopup(True)
-        today = date.today()
-        self._date_to.setDate(QDate(today.year, today.month, today.day))
-        filter_row.addWidget(QLabel("To:"))
-        filter_row.addWidget(self._date_to)
-
-        self._btn_refresh = QPushButton("Refresh")
-        self._btn_refresh.clicked.connect(self.refresh)
-        filter_row.addWidget(self._btn_refresh)
+        filter_row.addWidget(QLabel("Period:"))
+        self._date_range = DateRangeSelector(default_label="All Time")
+        self._date_range.range_changed.connect(lambda _d: self.refresh())
+        filter_row.addWidget(self._date_range)
 
         filter_row.addStretch()
         layout.addLayout(filter_row)
@@ -70,13 +56,12 @@ class AccountSummaryWidget(QWidget):
         layout.addWidget(self._table)
 
     def refresh(self):
-        date_from = self._date_from.date().toPython()
-        date_to = self._date_to.date().toPython()
+        date_from, date_to = self._date_range.resolved_range()
 
-        # The repository treats date_to as an exclusive upper bound, but the "To"
-        # date picker is meant to be inclusive of that whole day.
+        # The repository treats date_to as an exclusive upper bound, but
+        # resolved_range()'s date_to is inclusive of that whole day.
         summary = self._summary_service.get_summary(
-            date_from=date_from, date_to=date_to + timedelta(days=1)
+            date_from=date_from, date_to=date_to + timedelta(days=1) if date_to else None
         )
 
         self._total_balance_label.setText(f"R$ {summary.grand_total:.2f}")

@@ -1,12 +1,11 @@
-from datetime import date
+from datetime import date, timedelta
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
-    QTableWidgetItem, QDateEdit, QPushButton,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
 )
 from src.presentation.widgets.even_columns_table import EvenColumnsTableWidget
-from PySide6.QtCore import QDate
 from PySide6.QtGui import QColor
 from src.domain.services.category_breakdown_service import CategoryBreakdownService
+from src.presentation.widgets.date_range_selector import DateRangeSelector
 from src.presentation.widgets.stat_card import make_stat_card
 from src.presentation import theme
 
@@ -24,18 +23,10 @@ class CategoryBreakdownWidget(QWidget):
         layout.setSpacing(12)
 
         filter_row = QHBoxLayout()
-
-        self._month_date = QDateEdit()
-        self._month_date.setCalendarPopup(True)
-        today = date.today()
-        self._month_date.setDate(QDate(today.year, today.month, 1))
-        self._month_date.setDisplayFormat("yyyy-MM")
-        filter_row.addWidget(QLabel("Month:"))
-        filter_row.addWidget(self._month_date)
-
-        self._btn_refresh = QPushButton("Refresh")
-        self._btn_refresh.clicked.connect(self.refresh)
-        filter_row.addWidget(self._btn_refresh)
+        filter_row.addWidget(QLabel("Period:"))
+        self._date_range = DateRangeSelector(default_label="This Month")
+        self._date_range.range_changed.connect(lambda _d: self.refresh())
+        filter_row.addWidget(self._date_range)
 
         filter_row.addStretch()
         layout.addLayout(filter_row)
@@ -66,11 +57,12 @@ class CategoryBreakdownWidget(QWidget):
         layout.addWidget(self._table)
 
     def refresh(self):
-        qdate = self._month_date.date()
-        year = qdate.year()
-        month = qdate.month()
-
-        breakdown = self._breakdown_service.get_breakdown(year, month)
+        date_from, date_to = self._date_range.resolved_range()
+        # resolved_range()'s date_to is inclusive; the service's range check is exclusive.
+        exclusive_date_to = date_to + timedelta(days=1) if date_to else date.today() + timedelta(days=1)
+        breakdown = self._breakdown_service.get_breakdown_for_range(
+            date_from or date(2000, 1, 1), exclusive_date_to
+        )
 
         self._income_label.setText(f"R$ {breakdown.total_income:.2f}")
         self._expenses_label.setText(f"R$ {breakdown.total_expenses:.2f}")

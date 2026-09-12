@@ -44,7 +44,26 @@ class CategoryBreakdownService:
             date_to = date(year + 1, 1, 1)
         else:
             date_to = date(year, month + 1, 1)
+        return self._breakdown_for_range(date_from, date_to, category_id, year=year, month=month)
 
+    def get_breakdown_for_range(
+        self,
+        date_from: date,
+        date_to: date,
+        category_id: Optional[str] = None,
+    ) -> CategoryBreakdown:
+        """Like get_breakdown, but for an arbitrary [date_from, date_to)
+        range instead of a single calendar month."""
+        return self._breakdown_for_range(date_from, date_to, category_id)
+
+    def _breakdown_for_range(
+        self,
+        date_from: date,
+        date_to: date,
+        category_id: Optional[str],
+        year: int = 0,
+        month: int = 0,
+    ) -> CategoryBreakdown:
         events = self._financial_event_repository.find_all(
             date_from=date_from,
             date_to=date_to,
