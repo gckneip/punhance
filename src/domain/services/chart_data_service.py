@@ -159,6 +159,15 @@ class UpcomingRecurringOccurrenceRow:
 
 
 @dataclass
+class UpcomingEventRow:
+    event_date: date
+    description: str
+    amount: float
+    kind: str  # "installment" | "recurring"
+    detail: str
+
+
+@dataclass
 class CreditCardUtilizationRow:
     credit_card_id: str
     credit_card_name: str
@@ -185,6 +194,18 @@ def _month_range(date_from: date, date_to: date):
     while cursor < date_to:
         yield (cursor.year, cursor.month)
         cursor = _add_one_month(cursor)
+
+
+# "All Time" (DateRangeSpec(mode="fixed", date_from=None, date_to=None)) resolves
+# to (None, None) - fine for callers that pass dates straight through to a
+# repository's optional WHERE clause, but _month_range needs concrete bounds
+# to iterate. Substitute the same "beginning of time" convention already used
+# for unbounded ranges elsewhere in the app (e.g. account_summary_widget.py).
+_ALL_TIME_START = date(2000, 1, 1)
+
+
+def _month_iteration_bounds(date_from: Optional[date], date_to: Optional[date]) -> Tuple[date, date]:
+    return date_from or _ALL_TIME_START, date_to or (date.today() + timedelta(days=1))
 
 
 _FREQUENCY_SINGULAR = {"daily": "day", "weekly": "week", "monthly": "month", "yearly": "year"}
@@ -232,8 +253,9 @@ class ChartDataService:
         self._credit_card_service = credit_card_service
         self._recurring_event_service = recurring_event_service
 
+    @staticmethod
     def resolve_date_range(
-        self, spec: DateRangeSpec, today: Optional[date] = None
+        spec: DateRangeSpec, today: Optional[date] = None
     ) -> Tuple[Optional[date], Optional[date]]:
         today = today or date.today()
 
@@ -268,7 +290,7 @@ class ChartDataService:
         date_range: DateRangeSpec,
         filters: Optional[ChartFilters] = None,
     ) -> TimeSeriesResult:
-        date_from, date_to = self.resolve_date_range(date_range)
+        date_from, date_to = _month_iteration_bounds(*self.resolve_date_range(date_range))
         months = list(_month_range(date_from, date_to))
         labels = [f"{y:04d}-{m:02d}" for y, m in months]
         series: Dict[str, List[float]] = {metric.value: [] for metric in metrics}
@@ -317,6 +339,71 @@ class ChartDataService:
                     series[metric.value].append(sum(i.amount for i in installments))
                 else:
                     raise ValueError(f"{metric.value} is not supported in a time series")
+
+        return TimeSeriesResult(labels=labels, series=series)
+
+    def get_time_series_breakdown(
+        self,
+        metric: MetricType,
+        group_by: GroupByDimension,
+        date_range: DateRangeSpec,
+        filters: Optional[ChartFilters] = None,
+        top_n: Optional[int] = None,
+    ) -> TimeSeriesResult:
+        """Like get_time_series, but instead of one series per metric this
+        returns one series per `group_by` dimension value (e.g. one line per
+        counterparty), each plotted across the same month axis. Only a
+        single metric is supported, since combining multiple metrics with
+        multiple dimension lines would produce an unreadable chart.
+
+        Dimension values are ranked by total value across the whole range;
+        if there are more than `top_n`, the smallest are folded into a
+        trailing "Other" series so the chart/legend stays readable.
+        """
+        if group_by in (GroupByDimension.NONE, GroupByDimension.MONTH):
+            raise ValueError(f"{group_by.value} is not a breakdown dimension to split series by")
+        if metric not in (MetricType.INCOME, MetricType.EXPENSES, MetricType.NET):
+            raise ValueError(f"{metric.value} cannot be split into a per-dimension time series")
+        validate_metric_group_by(metric, group_by)
+
+        date_from, date_to = _month_iteration_bounds(*self.resolve_date_range(date_range))
+        months = list(_month_range(date_from, date_to))
+        labels = [f"{y:04d}-{m:02d}" for y, m in months]
+
+        dimension_labels: Dict[Optional[str], str] = {}
+        per_month_values: List[Dict[Optional[str], float]] = []
+        for year, month in months:
+            month_from = date(year, month, 1)
+            month_to = _add_one_month(month_from)
+            month_range = DateRangeSpec(
+                mode="fixed", date_from=month_from, date_to=month_to - timedelta(days=1)
+            )
+            breakdown = self.get_breakdown([metric], group_by, month_range, filters)
+            month_values: Dict[Optional[str], float] = {}
+            for row in breakdown.rows:
+                dimension_labels[row.dimension_id] = row.dimension_label
+                month_values[row.dimension_id] = row.values.get(metric.value, 0.0)
+            per_month_values.append(month_values)
+
+        totals: Dict[Optional[str], float] = {}
+        for month_values in per_month_values:
+            for dim_id, value in month_values.items():
+                totals[dim_id] = totals.get(dim_id, 0.0) + value
+        ranked = sorted(totals.keys(), key=lambda dim_id: totals[dim_id], reverse=True)
+        kept = set(ranked if top_n is None or len(ranked) <= top_n else ranked[:top_n])
+
+        series: Dict[str, List[float]] = {}
+        other_values = [0.0] * len(months)
+        has_other = False
+        for dim_id in ranked:
+            values = [month_values.get(dim_id, 0.0) for month_values in per_month_values]
+            if dim_id in kept:
+                series[dimension_labels[dim_id]] = values
+            else:
+                has_other = True
+                other_values = [total + v for total, v in zip(other_values, values)]
+        if has_other:
+            series["Other"] = other_values
 
         return TimeSeriesResult(labels=labels, series=series)
 
@@ -424,6 +511,30 @@ class ChartDataService:
         rows.sort(key=lambda r: r.occurrence_date)
         return rows
 
+    def get_upcoming_events(
+        self, days_ahead: int = 30, filters: Optional[ChartFilters] = None
+    ) -> List[UpcomingEventRow]:
+        """Installments and recurring occurrences merged into a single,
+        date-sorted list - "everything due in the next N days"."""
+        installments = self.get_upcoming_installments(days_ahead, filters)
+        recurring = self.get_upcoming_recurring_occurrences(days_ahead, filters)
+
+        rows = [
+            UpcomingEventRow(
+                event_date=i.due_date, description=i.description, amount=i.amount,
+                kind="installment", detail=f"{i.installment_number}/{i.installment_count}",
+            )
+            for i in installments
+        ] + [
+            UpcomingEventRow(
+                event_date=r.occurrence_date, description=r.description, amount=r.amount,
+                kind="recurring", detail=r.frequency_label,
+            )
+            for r in recurring
+        ]
+        rows.sort(key=lambda r: r.event_date)
+        return rows
+
     def get_credit_card_utilization(
         self, filters: Optional[ChartFilters] = None
     ) -> List[CreditCardUtilizationRow]:
@@ -450,7 +561,7 @@ class ChartDataService:
     def _breakdown_by_category(
         self, metrics: List[MetricType], date_range: DateRangeSpec, filters: Optional[ChartFilters]
     ) -> BreakdownResult:
-        date_from, date_to = self.resolve_date_range(date_range)
+        date_from, date_to = _month_iteration_bounds(*self.resolve_date_range(date_range))
         merged: Dict[Optional[str], Dict[str, float]] = {}
         for year, month in _month_range(date_from, date_to):
             breakdown = self._category_breakdown_service.get_breakdown(year, month)

@@ -58,6 +58,18 @@ DEFAULT_PRESETS = [
         },
     ),
     PresetDefinition(
+        preset_id="spending_by_counterparty_over_time",
+        title="Spending by Counterparty Over Time (6 months)",
+        kind=DashboardWidgetKind.GENERIC,
+        default_row_span=3,
+        default_col_span=6,
+        config={
+            "chart_type": "line", "metrics": ["expenses"], "group_by": "month",
+            "split_by": "counterparty", "top_n": 6,
+            "date_range": _rolling_months(6), "filters": {},
+        },
+    ),
+    PresetDefinition(
         preset_id="spending_by_item",
         title="Spending by Item (This Month)",
         kind=DashboardWidgetKind.GENERIC,
@@ -77,6 +89,17 @@ DEFAULT_PRESETS = [
         config={
             "chart_type": "bar", "metrics": ["balance"], "group_by": "account",
             "date_range": _this_month(), "filters": {},
+        },
+    ),
+    PresetDefinition(
+        preset_id="upcoming_events",
+        title="Upcoming Events (Next 30 Days)",
+        kind=DashboardWidgetKind.GENERIC,
+        default_row_span=3,
+        default_col_span=6,
+        config={
+            "chart_type": "table", "data_source": "upcoming_events",
+            "days_ahead": 30, "filters": {},
         },
     ),
     PresetDefinition(

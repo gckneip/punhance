@@ -1,12 +1,15 @@
 from typing import Dict, List
 
-from PySide6.QtWidgets import QAbstractItemView, QLabel, QTableWidget, QTableWidgetItem, QWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QWidget,
+)
 
 from src.domain.services.chart_data_service import (
     ChartDataService, ChartFilters, ChartType, DateRangeSpec, GroupByDimension, MetricType,
 )
 from src.presentation import theme
 from src.presentation.widgets.dashboard.chart_widget import ChartWidget, PieChartWidget
+from src.presentation.widgets.even_columns_table import EvenColumnsTableWidget
 from src.presentation.widgets.stat_card import make_stat_card
 
 METRIC_LABELS = {
@@ -28,6 +31,30 @@ DIMENSION_COLUMN_LABELS = {
 }
 
 
+def widget_supports_date_range(config: dict) -> bool:
+    """Whether changing config["date_range"] has any effect on this widget's
+    data. Some breakdowns (credit card debt, account balances) are always a
+    live snapshot and ignore date_range entirely - showing a selector for
+    those would be misleading."""
+    if "date_range" not in config:
+        return False
+    if config.get("data_source"):
+        return False
+    if config.get("group_by") == "credit_card":
+        return False
+    metrics = config.get("metrics") or []
+    if metrics and all(m in ("balance", "credit_card_debt") for m in metrics):
+        return False
+    return True
+
+
+def widget_supports_period_ahead(config: dict) -> bool:
+    """Whether this widget has a "how far into the future" window that a
+    PeriodAheadSelector can drive - true for the upcoming-installments/
+    -recurring/-events table data sources, which all key off days_ahead."""
+    return "days_ahead" in config
+
+
 def build_generic_content(title: str, config: dict, chart_data_service: ChartDataService) -> QWidget:
     chart_type = ChartType(config["chart_type"])
 
@@ -45,7 +72,7 @@ def build_generic_content(title: str, config: dict, chart_data_service: ChartDat
         return make_stat_card(title, label)
 
     group_by = GroupByDimension(config["group_by"])
-    labels, series = _fetch_series(metrics, group_by, date_range, filters, chart_data_service)
+    labels, series = _fetch_series(metrics, group_by, date_range, filters, chart_data_service, config)
 
     if chart_type == ChartType.PIE:
         widget = PieChartWidget()
@@ -55,8 +82,14 @@ def build_generic_content(title: str, config: dict, chart_data_service: ChartDat
     return widget
 
 
-def _fetch_series(metrics, group_by, date_range, filters, chart_data_service):
+def _fetch_series(metrics, group_by, date_range, filters, chart_data_service, config=None):
+    split_by = _split_by(config)
     if group_by == GroupByDimension.MONTH:
+        if split_by is not None:
+            result = chart_data_service.get_time_series_breakdown(
+                metrics[0], split_by, date_range, filters, top_n=(config or {}).get("top_n"),
+            )
+            return result.labels, result.series
         result = chart_data_service.get_time_series(metrics, date_range, filters)
         return result.labels, result.series
 
@@ -67,6 +100,11 @@ def _fetch_series(metrics, group_by, date_range, filters, chart_data_service):
         for metric in metrics
     }
     return labels, series
+
+
+def _split_by(config):
+    value = (config or {}).get("split_by")
+    return GroupByDimension(value) if value else None
 
 
 def _format_value(value: float) -> str:
@@ -83,6 +121,13 @@ def _colorize_stat(label: QLabel, metric: MetricType, value: float) -> None:
 
 
 def _build_table_content(title: str, config: dict, chart_data_service: ChartDataService) -> QWidget:
+    if config.get("data_source") == "upcoming_events":
+        filters = ChartFilters.from_dict(config.get("filters"))
+        rows = chart_data_service.get_upcoming_events(
+            days_ahead=config.get("days_ahead", 30), filters=filters,
+        )
+        return _build_upcoming_events_table(rows)
+
     if config.get("data_source") == "upcoming_installments":
         filters = ChartFilters.from_dict(config.get("filters"))
         rows = chart_data_service.get_upcoming_installments(
@@ -101,9 +146,28 @@ def _build_table_content(title: str, config: dict, chart_data_service: ChartData
     group_by = GroupByDimension(config["group_by"])
     date_range = DateRangeSpec.from_dict(config["date_range"])
     filters = ChartFilters.from_dict(config.get("filters"))
-    labels, series = _fetch_series(metrics, group_by, date_range, filters, chart_data_service)
+    split_by = _split_by(config)
+    labels, series = _fetch_series(metrics, group_by, date_range, filters, chart_data_service, config)
     dimension_column = DIMENSION_COLUMN_LABELS.get(group_by, group_by.value)
-    return _build_series_table(labels, series, dimension_column=dimension_column)
+    table = _build_series_table(
+        labels, series, dimension_column=dimension_column, series_are_metrics=split_by is None,
+    )
+
+    if group_by == GroupByDimension.PRODUCT:
+        return _build_table_with_pie(table, labels, series)
+    return table
+
+
+def _build_table_with_pie(table: QTableWidget, labels: List[str], series: Dict[str, List[float]]) -> QWidget:
+    container = QWidget()
+    layout = QHBoxLayout(container)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(table, 2)
+
+    pie = PieChartWidget()
+    pie.set_series(labels, series)
+    layout.addWidget(pie, 1)
+    return container
 
 
 def _build_upcoming_installments_table(rows) -> QTableWidget:
@@ -113,6 +177,19 @@ def _build_upcoming_installments_table(rows) -> QTableWidget:
         table.setItem(i, 0, QTableWidgetItem(row.due_date.isoformat()))
         table.setItem(i, 1, QTableWidgetItem(f"{row.description} ({row.installment_number}/{row.installment_count})"))
         table.setItem(i, 2, QTableWidgetItem(f"R$ {row.amount:.2f}"))
+    table.resizeColumnsToContents()
+    return table
+
+
+def _build_upcoming_events_table(rows) -> QTableWidget:
+    table = _new_table(["Date", "Type", "Description", "Amount", "Details"])
+    table.setRowCount(len(rows))
+    for i, row in enumerate(rows):
+        table.setItem(i, 0, QTableWidgetItem(row.event_date.isoformat()))
+        table.setItem(i, 1, QTableWidgetItem("Installment" if row.kind == "installment" else "Recurring"))
+        table.setItem(i, 2, QTableWidgetItem(row.description))
+        table.setItem(i, 3, QTableWidgetItem(f"R$ {row.amount:.2f}"))
+        table.setItem(i, 4, QTableWidgetItem(row.detail))
     table.resizeColumnsToContents()
     return table
 
@@ -129,9 +206,15 @@ def _build_upcoming_recurring_table(rows) -> QTableWidget:
     return table
 
 
-def _build_series_table(labels: List[str], series: Dict[str, List[float]], dimension_column: str) -> QTableWidget:
+def _build_series_table(
+    labels: List[str], series: Dict[str, List[float]], dimension_column: str, series_are_metrics: bool = True,
+) -> QTableWidget:
     metric_names = list(series.keys())
-    table = _new_table([dimension_column] + [METRIC_LABELS.get(MetricType(m), m) for m in metric_names])
+    if series_are_metrics:
+        headers = [METRIC_LABELS.get(MetricType(m), m) for m in metric_names]
+    else:
+        headers = metric_names
+    table = _new_table([dimension_column] + headers)
     table.setRowCount(len(labels))
     for i, label in enumerate(labels):
         table.setItem(i, 0, QTableWidgetItem(label))
@@ -143,7 +226,11 @@ def _build_series_table(labels: List[str], series: Dict[str, List[float]], dimen
 
 
 def _new_table(headers: List[str]) -> QTableWidget:
-    table = QTableWidget()
+    # EvenColumnsTableWidget (not a plain QTableWidget) so leftover viewport
+    # width - e.g. when this table sits next to a pie chart with more room
+    # than its content needs - gets spread across the columns instead of
+    # showing up as blank space after the last column.
+    table = EvenColumnsTableWidget()
     table.setColumnCount(len(headers))
     table.setHorizontalHeaderLabels(headers)
     table.setSelectionBehavior(QTableWidget.SelectRows)

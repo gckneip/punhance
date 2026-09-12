@@ -62,7 +62,27 @@ class CustomChartBuilderDialog(QDialog):
         form_panel = QWidget()
         layout = QVBoxLayout(form_panel)
         layout.setContentsMargins(0, 0, 0, 0)
-        form = QFormLayout()
+        layout.addWidget(self._build_chart_group())
+        layout.addWidget(self._build_filters_group())
+        layout.addWidget(self._build_date_range_group())
+        layout.addStretch()
+
+        content_row.addWidget(form_panel, stretch=1)
+        self._preview = PreviewDrawer()
+        content_row.addWidget(self._preview)
+        outer.addLayout(content_row)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._validate_and_accept)
+        buttons.rejected.connect(self.reject)
+        outer.addWidget(buttons)
+
+        # Default to a single checked metric so group-by options (and the preview) populate immediately.
+        self._metrics_list.item(0).setCheckState(Qt.Checked)
+
+    def _build_chart_group(self) -> QGroupBox:
+        group = QGroupBox("Chart")
+        form = QFormLayout(group)
 
         self._title_edit = QLineEdit()
         self._title_edit.setPlaceholderText("Widget title")
@@ -87,10 +107,36 @@ class CustomChartBuilderDialog(QDialog):
         form.addRow("Metrics:", self._metrics_list)
 
         self._group_by_combo = QComboBox()
-        self._group_by_combo.currentIndexChanged.connect(self._refresh_preview)
+        self._group_by_combo.currentIndexChanged.connect(self._on_group_by_changed)
         form.addRow("Group by:", self._group_by_combo)
 
-        form.addRow(QLabel("Filters (leave empty for no restriction):"))
+        self._split_by_combo = QComboBox()
+        self._split_by_combo.setToolTip(
+            "Draw one line/bar per value of this dimension (e.g. one line per "
+            "counterparty) across the same month axis. Only available for a single "
+            "metric grouped by Month, on a line or bar chart."
+        )
+        self._split_by_combo.currentIndexChanged.connect(self._on_split_by_changed)
+        form.addRow("Split into series by:", self._split_by_combo)
+
+        self._top_n_spin = QSpinBox()
+        self._top_n_spin.setRange(2, 20)
+        self._top_n_spin.setValue(6)
+        self._top_n_spin.setToolTip(
+            "Keep the top series by total value; the rest are folded into \"Other\"."
+        )
+        self._top_n_spin.valueChanged.connect(self._refresh_preview)
+        form.addRow("Show top:", self._top_n_spin)
+
+        return group
+
+    def _build_filters_group(self) -> QGroupBox:
+        group = QGroupBox("Filters (optional)")
+        form = QFormLayout(group)
+        hint = QLabel("Leave a list empty to not restrict by it.")
+        hint.setWordWrap(True)
+        form.addRow(hint)
+
         self._account_filter = _multi_select_list(self._accounts)
         self._account_filter.itemSelectionChanged.connect(self._refresh_preview)
         form.addRow("Accounts:", self._account_filter)
@@ -103,22 +149,7 @@ class CustomChartBuilderDialog(QDialog):
         self._credit_card_filter = _multi_select_list(self._credit_cards)
         self._credit_card_filter.itemSelectionChanged.connect(self._refresh_preview)
         form.addRow("Credit cards:", self._credit_card_filter)
-
-        layout.addLayout(form)
-        layout.addWidget(self._build_date_range_group())
-
-        content_row.addWidget(form_panel, stretch=1)
-        self._preview = PreviewDrawer()
-        content_row.addWidget(self._preview)
-        outer.addLayout(content_row)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self._validate_and_accept)
-        buttons.rejected.connect(self.reject)
-        outer.addWidget(buttons)
-
-        # Default to a single checked metric so group-by options (and the preview) populate immediately.
-        self._metrics_list.item(0).setCheckState(Qt.Checked)
+        return group
 
     def _build_date_range_group(self) -> QGroupBox:
         group = QGroupBox("Date range")
@@ -213,6 +244,7 @@ class CustomChartBuilderDialog(QDialog):
                     item.setCheckState(Qt.Checked if i == 0 else Qt.Unchecked)
                 self._metrics_list.blockSignals(False)
         self._refresh_group_by_options()
+        self._refresh_split_by_options()
         self._refresh_preview()
 
     def _on_metrics_changed(self, changed_item: QListWidgetItem):
@@ -224,7 +256,47 @@ class CustomChartBuilderDialog(QDialog):
                     item.setCheckState(Qt.Unchecked)
             self._metrics_list.blockSignals(False)
         self._refresh_group_by_options()
+        self._refresh_split_by_options()
         self._refresh_preview()
+
+    def _on_group_by_changed(self, *_args):
+        self._refresh_split_by_options()
+        self._refresh_preview()
+
+    def _on_split_by_changed(self, *_args):
+        self._top_n_spin.setEnabled(
+            self._split_by_combo.isEnabled() and self._split_by_combo.currentData() is not None
+        )
+        self._refresh_preview()
+
+    def _split_by_allowed_dims(self) -> set:
+        metrics = self._selected_metrics()
+        if self._chart_type() not in ("line", "bar") or len(metrics) != 1:
+            return set()
+        if self._group_by_combo.currentData() != GroupByDimension.MONTH:
+            return set()
+        return set(VALID_GROUP_BYS.get(metrics[0], ())) - {GroupByDimension.NONE, GroupByDimension.MONTH}
+
+    def _refresh_split_by_options(self):
+        allowed = self._split_by_allowed_dims()
+        prev = self._split_by_combo.currentData()
+
+        self._split_by_combo.blockSignals(True)
+        self._split_by_combo.clear()
+        self._split_by_combo.addItem("Don't split", None)
+        for dim in GroupByDimension:
+            if dim in allowed:
+                self._split_by_combo.addItem(GROUP_BY_LABELS.get(dim, dim.value), dim)
+        if prev is not None:
+            idx = self._split_by_combo.findData(prev)
+            if idx >= 0:
+                self._split_by_combo.setCurrentIndex(idx)
+        self._split_by_combo.blockSignals(False)
+
+        self._split_by_combo.setEnabled(bool(allowed))
+        self._top_n_spin.setEnabled(
+            self._split_by_combo.isEnabled() and self._split_by_combo.currentData() is not None
+        )
 
     def _refresh_group_by_options(self):
         metrics = self._selected_metrics()
@@ -322,13 +394,18 @@ class CustomChartBuilderDialog(QDialog):
     def _build_config(self) -> dict:
         group_by_data = self._group_by_combo.currentData()
         group_by = group_by_data.value if group_by_data is not None else GroupByDimension.NONE.value
-        return {
+        config = {
             "chart_type": self._chart_type(),
             "metrics": [m.value for m in self._selected_metrics()],
             "group_by": group_by,
             "date_range": self._current_date_range_dict(),
             "filters": self._current_filters_dict(),
         }
+        split_by_data = self._split_by_combo.currentData() if self._split_by_combo.isEnabled() else None
+        if split_by_data is not None:
+            config["split_by"] = split_by_data.value
+            config["top_n"] = self._top_n_spin.value()
+        return config
 
     def get_data(self) -> dict:
         return {"title": self._title_edit.text().strip(), "config": self._build_config()}

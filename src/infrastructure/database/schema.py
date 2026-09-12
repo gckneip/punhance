@@ -133,6 +133,16 @@ def create_tables(conn):
             updated_at TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS dashboard_widget_templates (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            config_json TEXT NOT NULL DEFAULT '{}',
+            row_span INTEGER NOT NULL DEFAULT 3,
+            col_span INTEGER NOT NULL DEFAULT 6,
+            created_at TEXT,
+            updated_at TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS recurring_events (
             id TEXT PRIMARY KEY,
             event_type TEXT NOT NULL,

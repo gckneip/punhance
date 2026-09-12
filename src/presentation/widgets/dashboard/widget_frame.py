@@ -5,6 +5,8 @@ from PySide6.QtWidgets import (
 )
 
 from src.presentation import icons, theme
+from src.presentation.widgets.date_range_selector import DateRangeSelector
+from src.presentation.widgets.dashboard.period_ahead_selector import PeriodAheadSelector
 
 DASHBOARD_WIDGET_MIME = "application/x-dashboard-widget-id"
 
@@ -107,8 +109,13 @@ class WidgetFrame(QFrame):
     delete_requested = Signal(str)
     span_changed = Signal(str, int, int)  # widget_id, row_span, col_span
     resize_preview = Signal(str, int, int)  # widget_id, row_span, col_span (live, while dragging)
+    date_range_changed = Signal(str, dict)  # widget_id, new date_range dict
+    days_ahead_changed = Signal(str, int)  # widget_id, new days_ahead value
 
-    def __init__(self, widget_id: str, title: str, content: QWidget, row_span: int, col_span: int, parent=None):
+    def __init__(
+        self, widget_id: str, title: str, content: QWidget, row_span: int, col_span: int,
+        parent=None, date_range: dict = None, days_ahead: int = None,
+    ):
         super().__init__(parent)
         self._widget_id = widget_id
         self._content = None
@@ -149,6 +156,24 @@ class WidgetFrame(QFrame):
         title_label.setSizePolicy(QSizePolicy.Ignored, title_label.sizePolicy().verticalPolicy())
         header_layout.addWidget(title_label)
         header_layout.addStretch()
+
+        self._date_range_selector = None
+        if date_range is not None:
+            self._date_range_selector = DateRangeSelector(self, compact=True)
+            self._date_range_selector.set_range_dict(date_range)
+            self._date_range_selector.range_changed.connect(
+                lambda d: self.date_range_changed.emit(self._widget_id, d)
+            )
+            header_layout.addWidget(self._date_range_selector)
+
+        self._period_ahead_selector = None
+        if days_ahead is not None:
+            self._period_ahead_selector = PeriodAheadSelector(self)
+            self._period_ahead_selector.set_days_ahead(days_ahead)
+            self._period_ahead_selector.days_changed.connect(
+                lambda days: self.days_ahead_changed.emit(self._widget_id, days)
+            )
+            header_layout.addWidget(self._period_ahead_selector)
 
         self._outer.addWidget(header)
         self._drag_handle.setVisible(False)

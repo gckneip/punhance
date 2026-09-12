@@ -14,7 +14,9 @@ from src.presentation import icons, theme
 from src.presentation.widgets.dashboard.builtin_widgets import (
     EventsTableWidget, QuickAddBarWidget, SavingsRateStatWidget, split_event_rows,
 )
-from src.presentation.widgets.dashboard.generic_widget_renderer import build_generic_content
+from src.presentation.widgets.dashboard.generic_widget_renderer import (
+    build_generic_content, widget_supports_date_range, widget_supports_period_ahead,
+)
 from src.presentation.widgets.dashboard.widget_frame import (
     DASHBOARD_WIDGET_MIME, WidgetFrame, decode_drag_payload,
 )
@@ -226,6 +228,7 @@ class DashboardGridWidget(QWidget):
         financial_event_use_cases=None,
         purchase_use_cases=None,
         dashboard_id="default",
+        dashboard_widget_template_use_cases=None,
         parent=None,
     ):
         super().__init__(parent)
@@ -234,12 +237,20 @@ class DashboardGridWidget(QWidget):
         self._financial_event_use_cases = financial_event_use_cases
         self._purchase_use_cases = purchase_use_cases
         self._dashboard_id = dashboard_id
+        self._widget_template_use_cases = dashboard_widget_template_use_cases
 
         self._edit_mode = False
         self._widgets: List = []
         self._frames: Dict[str, WidgetFrame] = {}
         self._builtin_content: Dict[str, QWidget] = {}
         self._last_data_args: Optional[dict] = None
+        # Session-only per-widget date-range overrides from the frame header
+        # selector - deliberately not persisted, so widgets keep their
+        # configured default range across restarts (see WidgetFrame).
+        self._date_range_overrides: Dict[str, dict] = {}
+        # Same idea as above, for the "how far into the future" selector on
+        # upcoming-events/-installments/-recurring table widgets.
+        self._days_ahead_overrides: Dict[str, int] = {}
 
         self._build_ui()
 
@@ -319,11 +330,22 @@ class DashboardGridWidget(QWidget):
 
         for dto in self._widgets:
             content = self._build_content(dto)
-            frame = WidgetFrame(dto.id, dto.title, content, dto.grid_row_span, dto.grid_col_span)
+            date_range = None
+            if dto.kind != "builtin" and widget_supports_date_range(dto.config):
+                date_range = self._effective_config(dto).get("date_range")
+            days_ahead = None
+            if dto.kind != "builtin" and widget_supports_period_ahead(dto.config):
+                days_ahead = self._effective_config(dto).get("days_ahead")
+            frame = WidgetFrame(
+                dto.id, dto.title, content, dto.grid_row_span, dto.grid_col_span,
+                date_range=date_range, days_ahead=days_ahead,
+            )
             frame.set_edit_mode(self._edit_mode)
             frame.delete_requested.connect(self._on_delete_widget)
             frame.span_changed.connect(self._on_span_changed)
             frame.resize_preview.connect(self._on_resize_preview)
+            frame.date_range_changed.connect(self._on_widget_date_range_changed)
+            frame.days_ahead_changed.connect(self._on_widget_days_ahead_changed)
             self._frames[dto.id] = frame
             self._grid.addWidget(frame, dto.grid_row, dto.grid_col, dto.grid_row_span, dto.grid_col_span)
 
@@ -337,7 +359,23 @@ class DashboardGridWidget(QWidget):
             content = self._build_builtin_content(dto)
             self._builtin_content[dto.id] = content
             return content
-        return build_generic_content(dto.title, dto.config, self._chart_data_service)
+        return build_generic_content(dto.title, self._effective_config(dto), self._chart_data_service)
+
+    def _effective_config(self, dto) -> dict:
+        """dto.config with any live (session-only) date-range/days-ahead
+        overrides from the widget's header selectors applied on top."""
+        config = dto.config
+        date_override = self._date_range_overrides.get(dto.id)
+        days_override = self._days_ahead_overrides.get(dto.id)
+        if date_override is None and days_override is None:
+            return config
+
+        result = config
+        if date_override is not None and widget_supports_date_range(config):
+            result = {**result, "date_range": date_override}
+        if days_override is not None and widget_supports_period_ahead(config):
+            result = {**result, "days_ahead": days_override}
+        return result
 
     def _build_builtin_content(self, dto) -> QWidget:
         key = dto.config.get("builtin_key")
@@ -392,7 +430,9 @@ class DashboardGridWidget(QWidget):
                         savings_summary.get("income", 0.0), savings_summary.get("expenses", 0.0)
                     )
             else:
-                frame.set_content(build_generic_content(dto.title, dto.config, self._chart_data_service))
+                frame.set_content(
+                    build_generic_content(dto.title, self._effective_config(dto), self._chart_data_service)
+                )
 
     # -- edit-mode interactions ------------------------------------------------
 
@@ -401,6 +441,22 @@ class DashboardGridWidget(QWidget):
         self._grid_container.set_show_grid(enabled)
         for frame in self._frames.values():
             frame.set_edit_mode(enabled)
+
+    def _on_widget_date_range_changed(self, widget_id: str, date_range: dict):
+        self._date_range_overrides[widget_id] = date_range
+        dto = next((w for w in self._widgets if w.id == widget_id), None)
+        frame = self._frames.get(widget_id)
+        if dto is None or frame is None:
+            return
+        frame.set_content(build_generic_content(dto.title, self._effective_config(dto), self._chart_data_service))
+
+    def _on_widget_days_ahead_changed(self, widget_id: str, days_ahead: int):
+        self._days_ahead_overrides[widget_id] = days_ahead
+        dto = next((w for w in self._widgets if w.id == widget_id), None)
+        frame = self._frames.get(widget_id)
+        if dto is None or frame is None:
+            return
+        frame.set_content(build_generic_content(dto.title, self._effective_config(dto), self._chart_data_service))
 
     def _on_delete_widget(self, widget_id: str):
         reply = QMessageBox.question(
@@ -528,6 +584,7 @@ class DashboardGridWidget(QWidget):
             counterparties=(self._last_data_args or {}).get("counterparties") or [],
             credit_cards=(self._last_data_args or {}).get("credit_cards") or [],
             chart_data_service=self._chart_data_service,
+            dashboard_widget_template_use_cases=self._widget_template_use_cases,
         )
         if dialog.exec() != dialog.DialogCode.Accepted:
             return

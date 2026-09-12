@@ -14,6 +14,9 @@ from src.infrastructure.repositories.sqlite_installment_plan_repository import S
 from src.infrastructure.repositories.sqlite_installment_repository import SQLiteInstallmentRepository
 from src.infrastructure.repositories.sqlite_dashboard_widget_repository import SQLiteDashboardWidgetRepository
 from src.infrastructure.repositories.sqlite_dashboard_report_repository import SQLiteDashboardReportRepository
+from src.infrastructure.repositories.sqlite_dashboard_widget_template_repository import (
+    SQLiteDashboardWidgetTemplateRepository,
+)
 from src.infrastructure.repositories.sqlite_recurring_event_repository import SQLiteRecurringEventRepository
 from src.infrastructure.repositories.sqlite_app_settings_repository import SQLiteAppSettingsRepository
 from src.infrastructure.homebank.xhb_reader import XhbReader
@@ -31,6 +34,7 @@ from src.application.use_cases.installment_use_cases import InstallmentUseCases
 from src.application.use_cases.recurring_event_use_cases import RecurringEventUseCases
 from src.application.use_cases.dashboard_layout_use_cases import DashboardLayoutUseCases
 from src.application.use_cases.dashboard_report_use_cases import DashboardReportUseCases
+from src.application.use_cases.dashboard_widget_template_use_cases import DashboardWidgetTemplateUseCases
 from src.application.use_cases.app_settings_use_cases import AppSettingsUseCases
 from src.application.use_cases.homebank_import_use_cases import HomeBankImportUseCases
 from src.application.use_cases.homebank_export_use_cases import HomeBankExportUseCases
@@ -92,6 +96,7 @@ def main():
     installment_repo = SQLiteInstallmentRepository(conn)
     dashboard_widget_repo = SQLiteDashboardWidgetRepository(conn)
     dashboard_report_repo = SQLiteDashboardReportRepository(conn)
+    dashboard_widget_template_repo = SQLiteDashboardWidgetTemplateRepository(conn)
     recurring_event_repo = SQLiteRecurringEventRepository(conn)
 
     account_use_cases = AccountUseCases(account_repo)
@@ -155,6 +160,7 @@ def main():
     dashboard_layout_use_cases.seed_default_layout_if_empty()
     dashboard_report_use_cases = DashboardReportUseCases(dashboard_report_repo, dashboard_widget_repo)
     dashboard_report_use_cases.seed_default_if_empty()
+    dashboard_widget_template_use_cases = DashboardWidgetTemplateUseCases(dashboard_widget_template_repo)
 
     window = MainWindow(
         account_use_cases,
@@ -175,6 +181,7 @@ def main():
         homebank_export_use_cases=homebank_export_use_cases,
         theme_use_cases=theme_use_cases,
         product_use_cases=product_use_cases,
+        dashboard_widget_template_use_cases=dashboard_widget_template_use_cases,
     )
     window.show()
     sys.exit(app.exec())

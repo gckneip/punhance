@@ -23,6 +23,7 @@ class DashboardTabsWidget(QWidget):
         chart_data_service,
         financial_event_use_cases=None,
         purchase_use_cases=None,
+        dashboard_widget_template_use_cases=None,
         parent=None,
     ):
         super().__init__(parent)
@@ -31,6 +32,7 @@ class DashboardTabsWidget(QWidget):
         self._chart_data_service = chart_data_service
         self._financial_event_use_cases = financial_event_use_cases
         self._purchase_use_cases = purchase_use_cases
+        self._widget_template_use_cases = dashboard_widget_template_use_cases
         self._grids: Dict[str, DashboardGridWidget] = {}
         self._last_data_args: Optional[dict] = None
         self._last_real_index = 0
@@ -72,6 +74,7 @@ class DashboardTabsWidget(QWidget):
         grid = DashboardGridWidget(
             self._layout_use_cases, self._chart_data_service, self._financial_event_use_cases,
             self._purchase_use_cases, dashboard_id=dashboard_id,
+            dashboard_widget_template_use_cases=self._widget_template_use_cases,
         )
         grid.entry_added.connect(self.entry_added.emit)
         grid.edit_event_requested.connect(self.edit_event_requested.emit)
