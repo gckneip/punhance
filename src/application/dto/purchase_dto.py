@@ -59,6 +59,18 @@ class PurchaseDTO:
 
 
 @dataclass
+class ProductEventDTO:
+    event_date: Optional[date]
+    description: Optional[str]
+    quantity: float
+    unit: str
+    unit_price: float
+    total_price: float
+    purchase_id: str
+    financial_event_id: Optional[str]
+
+
+@dataclass
 class InstallmentDTO:
     id: str
     installment_plan_id: str

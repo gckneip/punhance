@@ -1,7 +1,7 @@
 import calendar
 import sqlite3
 from typing import Dict, List, Optional
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from src.domain.entities.financial_event import FinancialEvent, EventType
 from src.domain.entities.purchase import Purchase, PaymentMethod
 from src.domain.entities.purchase_item import PurchaseItem
@@ -12,7 +12,7 @@ from src.domain.repositories.installment_plan_repository import InstallmentPlanR
 from src.domain.repositories.installment_repository import InstallmentRepository
 from src.domain.services.installment_service import InstallmentService
 from src.application.dto.purchase_dto import (
-    CreatePurchaseDTO, PurchaseDTO, PurchaseItemDTO, InstallmentDTO,
+    CreatePurchaseDTO, PurchaseDTO, PurchaseItemDTO, InstallmentDTO, ProductEventDTO,
 )
 
 
@@ -268,6 +268,45 @@ class PurchaseUseCases:
 
     def count_items_using_product(self, product_id: str) -> int:
         return self._purchase_repo.count_items_by_product(product_id)
+
+    def get_spending_by_product(
+        self, date_from: Optional[date] = None, date_to: Optional[date] = None
+    ) -> Dict[str, float]:
+        # date_to here is inclusive (as picked by a date-range selector); the
+        # repository's range check is exclusive on the upper bound.
+        exclusive_date_to = date_to + timedelta(days=1) if date_to else None
+        totals: Dict[str, float] = {}
+        for item in self._purchase_repo.find_items_in_range(date_from, exclusive_date_to):
+            if item.product_id:
+                totals[item.product_id] = totals.get(item.product_id, 0.0) + item.total_price
+        return totals
+
+    def get_average_price_by_product(self) -> Dict[str, float]:
+        sums: Dict[str, float] = {}
+        counts: Dict[str, int] = {}
+        for item in self._purchase_repo.find_items_in_range():
+            if item.product_id:
+                sums[item.product_id] = sums.get(item.product_id, 0.0) + item.unit_price
+                counts[item.product_id] = counts.get(item.product_id, 0) + 1
+        return {product_id: sums[product_id] / counts[product_id] for product_id in sums}
+
+    def get_recent_events_for_product(self, product_id: str, limit: int = 20) -> List[ProductEventDTO]:
+        items = self._purchase_repo.find_items_by_product(product_id, limit=limit)
+        result = []
+        for item in items:
+            purchase = self._purchase_repo.find_by_id(item.purchase_id)
+            event = self._event_repo.find_by_id(purchase.financial_event_id) if purchase else None
+            result.append(ProductEventDTO(
+                event_date=event.event_date if event else None,
+                description=event.description if event else None,
+                quantity=item.quantity,
+                unit=item.unit,
+                unit_price=item.unit_price,
+                total_price=item.total_price,
+                purchase_id=item.purchase_id,
+                financial_event_id=purchase.financial_event_id if purchase else None,
+            ))
+        return result
 
     def get_multi_installment_map(self) -> Dict[str, List[InstallmentDTO]]:
         plans = self._plan_repo.find_all()

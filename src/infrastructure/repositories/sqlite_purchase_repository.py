@@ -100,6 +100,19 @@ class SQLitePurchaseRepository(PurchaseRepository):
         )
         return cursor.fetchone()[0]
 
+    def find_items_by_product(self, product_id: str, limit: Optional[int] = None) -> List[PurchaseItem]:
+        query = """SELECT purchase_items.* FROM purchase_items
+                   JOIN purchases ON purchase_items.purchase_id = purchases.id
+                   JOIN financial_events ON purchases.financial_event_id = financial_events.id
+                   WHERE purchase_items.product_id = ?
+                   ORDER BY financial_events.event_date DESC, financial_events.created_at DESC"""
+        params = [product_id]
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
+        cursor = self._conn.execute(query, params)
+        return [self._row_to_item(row) for row in cursor.fetchall()]
+
     def delete_items_by_purchase(self, purchase_id: str, commit: bool = True) -> None:
         self._conn.execute(
             "DELETE FROM purchase_items WHERE purchase_id = ?", (purchase_id,)
