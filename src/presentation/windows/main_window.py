@@ -33,6 +33,7 @@ from src.presentation.dialogs.account_dialog import AccountDialog
 from src.presentation.dialogs.category_dialog import CategoryDialog
 from src.presentation.dialogs.counterparty_dialog import CounterpartyDialog
 from src.presentation.dialogs.product_dialog import ProductDialog
+from src.presentation.dialogs.product_detail_dialog import ProductDetailDialog
 from src.presentation.dialogs.credit_card_dialog import CreditCardDialog
 from src.presentation.dialogs.purchase_dialog import PurchaseDialog
 from src.presentation.dialogs.event_dialog import EventDialog
@@ -46,7 +47,10 @@ from src.application.use_cases.theme_use_cases import ThemeUseCases
 from src.infrastructure.theming.theme_parser import ThemeParseError
 from src.presentation.app_restart import restart_app
 from src.presentation.widgets.dashboard.dashboard_tabs_widget import DashboardTabsWidget
+from src.presentation.widgets.dashboard.chart_widget import PieChartWidget
+from src.presentation.widgets.date_range_selector import DateRangeSelector
 from src.presentation.widgets.installments_widget import InstallmentsWidget
+from src.presentation.widgets.calendar_widget import CalendarWidget
 from src.presentation.widgets.category_breakdown_widget import CategoryBreakdownWidget
 from src.presentation.widgets.account_summary_widget import AccountSummaryWidget
 from src.presentation.widgets.nav_host import TabNavHost, SidebarNavHost
@@ -75,6 +79,7 @@ class MainWindow(QMainWindow):
         homebank_export_use_cases=None,
         theme_use_cases: ThemeUseCases = None,
         product_use_cases=None,
+        dashboard_widget_template_use_cases=None,
     ):
         super().__init__()
         self._account_use_cases = account_use_cases
@@ -92,6 +97,7 @@ class MainWindow(QMainWindow):
         self._homebank_export_use_cases = homebank_export_use_cases
         self._theme_use_cases = theme_use_cases
         self._product_use_cases = product_use_cases
+        self._dashboard_widget_template_use_cases = dashboard_widget_template_use_cases
 
         self.setWindowTitle("Personal Finance Manager")
         self.setWindowIcon(icons.icon("fa6s.sack-dollar", color=theme.PRIMARY))
@@ -103,6 +109,7 @@ class MainWindow(QMainWindow):
         self._dashboard = DashboardTabsWidget(
             dashboard_report_use_cases, dashboard_layout_use_cases, chart_data_service,
             financial_event_use_cases, purchase_use_cases,
+            dashboard_widget_template_use_cases=dashboard_widget_template_use_cases,
         )
         self._dashboard.entry_added.connect(self._refresh_all)
         self._dashboard.edit_event_requested.connect(self._edit_event)
@@ -181,6 +188,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._tabs)
 
         self._build_events_tab()
+        self._build_calendar_tab()
         self._build_accounts_tab()
         self._build_categories_tab()
         self._build_counterparties_tab()
@@ -357,7 +365,11 @@ class MainWindow(QMainWindow):
 
     def _build_products_tab(self):
         tab = QWidget()
-        layout = QVBoxLayout(tab)
+        outer_layout = QHBoxLayout(tab)
+
+        left = QWidget()
+        layout = QVBoxLayout(left)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         btn_row = QHBoxLayout()
         btn = QPushButton("+ Product")
@@ -373,13 +385,32 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._product_search)
 
         self._products_table = EvenColumnsTableWidget()
-        self._products_table.setColumnCount(2)
-        self._products_table.setHorizontalHeaderLabels(["Name", "Actions"])
+        self._products_table.setColumnCount(3)
+        self._products_table.setHorizontalHeaderLabels(["Name", "Avg. Price Paid", "Actions"])
         self._products_table.setObjectName("mainTabTable")
         self._products_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._products_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._products_table.setAlternatingRowColors(True)
         layout.addWidget(self._products_table)
+
+        outer_layout.addWidget(left, 2)
+
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+
+        chart_header = QHBoxLayout()
+        chart_header.addWidget(QLabel("Spending by Product"))
+        chart_header.addStretch()
+        self._product_chart_range = DateRangeSelector(default_label="All Time")
+        self._product_chart_range.range_changed.connect(lambda _d: self._refresh_products())
+        chart_header.addWidget(self._product_chart_range)
+        right_layout.addLayout(chart_header)
+
+        self._product_pie_chart = PieChartWidget()
+        right_layout.addWidget(self._product_pie_chart, 1)
+
+        outer_layout.addWidget(right, 1)
 
         self._tabs.addTab(tab, icons.icon("fa6s.box"), "Products")
 
@@ -413,6 +444,22 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._credit_cards_table)
 
         self._tabs.addTab(tab, icons.icon("fa6s.credit-card"), "Credit Cards")
+
+    def _build_calendar_tab(self):
+        self._calendar_widget = CalendarWidget(
+            self._financial_event_use_cases,
+            self._recurring_event_use_cases,
+            self._installment_use_cases,
+            self._category_use_cases,
+            self._account_use_cases,
+            self._account_summary_service,
+        )
+        self._calendar_widget.edit_event_requested.connect(self._edit_event)
+        self._calendar_widget.confirm_occurrence_requested.connect(self._confirm_occurrence)
+        self._calendar_widget.skip_occurrence_requested.connect(
+            lambda rid, od: self._skip_occurrence(rid, od)
+        )
+        self._tabs.addTab(self._calendar_widget, icons.icon("fa6s.calendar"), "Calendar")
 
     def _build_installments_tab(self):
         self._installments_widget = InstallmentsWidget(
@@ -560,6 +607,17 @@ class MainWindow(QMainWindow):
             dto = CreateProductDTO(name=data["name"])
             self._product_use_cases.update_product(product_id, dto)
             self._refresh_all()
+
+    def _view_product_events(self, product_id):
+        products = {p.id: p for p in self._product_use_cases.list_products()}
+        product = products.get(product_id)
+        if product is None:
+            return
+
+        events = self._purchase_use_cases.get_recent_events_for_product(product_id, limit=20)
+        average_price = self._purchase_use_cases.get_average_price_by_product().get(product_id)
+        dialog = ProductDetailDialog(self, product=product, events=events, average_price=average_price)
+        dialog.exec()
 
     def _delete_product(self, product_id):
         products = {p.id: p for p in self._product_use_cases.list_products()}
@@ -1191,6 +1249,8 @@ class MainWindow(QMainWindow):
         self._refresh_installments()
         self._refresh_recurring_events()
         self._refresh_dashboard()
+        if hasattr(self, '_calendar_widget'):
+            self._calendar_widget.refresh()
         if hasattr(self, '_category_breakdown_widget'):
             self._category_breakdown_widget.refresh()
         if hasattr(self, '_account_summary_widget'):
@@ -1393,19 +1453,44 @@ class MainWindow(QMainWindow):
 
     def _refresh_products(self):
         products = self._product_use_cases.list_products()
+        self._refresh_product_chart(products)
+
         search = self._product_search.text().strip().lower()
         if search:
             products = [p for p in products if search in p.name.lower()]
 
+        avg_price_by_id = self._purchase_use_cases.get_average_price_by_product()
+
         self._products_table.setRowCount(len(products))
         for i, p in enumerate(products):
             self._products_table.setItem(i, 0, QTableWidgetItem(p.name))
-            self._products_table.setCellWidget(i, 1, self._make_actions_widget([
+            avg_price = avg_price_by_id.get(p.id)
+            avg_price_text = f"R$ {avg_price:.2f}" if avg_price is not None else "-"
+            self._products_table.setItem(i, 1, QTableWidgetItem(avg_price_text))
+            self._products_table.setCellWidget(i, 2, self._make_actions_widget([
+                ("View Events", "fa6s.eye", lambda _, p_id=p.id: self._view_product_events(p_id)),
                 ("Edit", "fa6s.pen", lambda _, p_id=p.id: self._edit_product(p_id)),
                 ("Delete", "fa6s.trash", lambda _, p_id=p.id: self._delete_product(p_id), theme.EXPENSE),
             ]))
         self._products_table.resizeColumnsToContents()
         self._products_table.resizeRowsToContents()
+
+    def _refresh_product_chart(self, products):
+        date_from, date_to = self._product_chart_range.resolved_range()
+        totals = self._purchase_use_cases.get_spending_by_product(date_from, date_to)
+        name_by_id = {p.id: p.name for p in products}
+        entries = sorted(
+            ((name_by_id.get(pid, pid), total) for pid, total in totals.items() if total > 0),
+            key=lambda entry: entry[1],
+            reverse=True,
+        )
+        if not entries:
+            self._product_pie_chart.set_empty_state("No purchase data yet.")
+            return
+        self._product_pie_chart.set_series(
+            [name for name, _ in entries],
+            {"Total Spent": [total for _, total in entries]},
+        )
 
     def _refresh_credit_cards(self):
         cards = self._credit_card_use_cases.list_cards()
