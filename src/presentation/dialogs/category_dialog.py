@@ -4,12 +4,13 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 from src.application.dto.category_dto import CategoryDTO
+from src.presentation.i18n import t
 
 
 class CategoryDialog(QDialog):
     def __init__(self, categories: List[CategoryDTO], parent=None, category: CategoryDTO = None):
         super().__init__(parent)
-        self.setWindowTitle("Edit Category" if category else "Create Category")
+        self.setWindowTitle(t("category_dialog.title_edit") if category else t("category_dialog.title_create"))
         self.setModal(True)
         self.resize(350, 200)
 
@@ -17,19 +18,19 @@ class CategoryDialog(QDialog):
         form = QFormLayout()
 
         self.name_edit = QLineEdit()
-        form.addRow("Name:", self.name_edit)
+        form.addRow(f'{t("common.name")}:', self.name_edit)
 
         self.color_edit = QLineEdit()
         self.color_edit.setPlaceholderText("#ff0000")
-        form.addRow("Color:", self.color_edit)
+        form.addRow(t("category_dialog.color"), self.color_edit)
 
         self.parent_combo = QComboBox()
-        self.parent_combo.addItem("None", None)
+        self.parent_combo.addItem(t("common.none"), None)
         for cat in categories:
             if category and cat.id == category.id:
                 continue
             self.parent_combo.addItem(cat.name, cat.id)
-        form.addRow("Parent:", self.parent_combo)
+        form.addRow(t("category_dialog.parent"), self.parent_combo)
 
         layout.addLayout(form)
 
@@ -48,7 +49,7 @@ class CategoryDialog(QDialog):
 
     def _validate_and_accept(self):
         if not self.name_edit.text().strip():
-            QMessageBox.warning(self, "Validation", "Name is required.")
+            QMessageBox.warning(self, t("common.warning"), t("category_dialog.name_required"))
             return
         self.accept()
 

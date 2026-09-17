@@ -27,6 +27,11 @@ from PySide6.QtWidgets import (
 
 from src.presentation import theme
 from src.presentation import icons
+from src.presentation.i18n import (
+    t, format_currency, format_number, format_date,
+    format_month_year, format_weekday_date, format_day_month, weekday_abbr,
+)
+from src.presentation.labels import installment_status_label
 
 # Day the week starts on (Google's default is Sunday). calendar's constants use
 # Monday=0..Sunday=6, matching Python's date.weekday(), so the two are aligned.
@@ -127,17 +132,17 @@ class CalendarWidget(QWidget):
 
         self._btn_prev = QToolButton()
         self._btn_prev.setIcon(icons.icon("fa6s.chevron-left"))
-        self._btn_prev.setToolTip("Previous")
+        self._btn_prev.setToolTip(t("calendar.previous"))
         self._btn_prev.clicked.connect(self._go_prev)
         header.addWidget(self._btn_prev)
 
         self._btn_next = QToolButton()
         self._btn_next.setIcon(icons.icon("fa6s.chevron-right"))
-        self._btn_next.setToolTip("Next")
+        self._btn_next.setToolTip(t("calendar.next"))
         self._btn_next.clicked.connect(self._go_next)
         header.addWidget(self._btn_next)
 
-        self._btn_today = QPushButton("Today")
+        self._btn_today = QPushButton(t("calendar.today"))
         self._btn_today.clicked.connect(self._go_today)
         header.addWidget(self._btn_today)
 
@@ -152,23 +157,26 @@ class CalendarWidget(QWidget):
         header.addStretch()
 
         self._btn_totals = QToolButton()
-        self._btn_totals.setText(" Totals")
+        self._btn_totals.setText(" " + t("calendar.totals"))
         self._btn_totals.setIcon(icons.icon("fa6s.calculator"))
         self._btn_totals.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self._btn_totals.setCheckable(True)
         self._btn_totals.setChecked(self._show_totals)
-        self._btn_totals.setToolTip(
-            "Show each day's income/expense and the running balance across all accounts"
-        )
+        self._btn_totals.setToolTip(t("calendar.totals_tooltip"))
         self._btn_totals.toggled.connect(self._toggle_totals)
         header.addWidget(self._btn_totals)
         header.addSpacing(12)
 
         self._view_group = QButtonGroup(self)
         self._view_group.setExclusive(True)
-        for mode, label in (("day", "Day"), ("week", "Week"), ("month", "Month")):
+        for mode, label in (
+            ("day", t("calendar.view_day")),
+            ("week", t("calendar.view_week")),
+            ("month", t("calendar.view_month")),
+        ):
             btn = QPushButton(label)
             btn.setCheckable(True)
+            btn.setProperty("view_mode", mode)
             btn.setChecked(mode == self._view_mode)
             btn.clicked.connect(lambda _checked, m=mode: self._set_view(m))
             self._view_group.addButton(btn)
@@ -186,7 +194,7 @@ class CalendarWidget(QWidget):
     def _set_view(self, mode: str):
         self._view_mode = mode
         for btn in self._view_group.buttons():
-            btn.setChecked(btn.text().lower() == mode)
+            btn.setChecked(btn.property("view_mode") == mode)
         self.refresh()
 
     def _toggle_totals(self, checked: bool):
@@ -247,15 +255,17 @@ class CalendarWidget(QWidget):
         for o in self._recurring_event_use_cases.get_pending_occurrences(date_from, date_to):
             add(CalendarEntry(
                 entry_date=o.occurrence_date, kind="recurring",
-                label=f"{o.description} (recurring)", amount=o.amount, currency=o.currency,
+                label=t("calendar.recurring_label", description=o.description),
+                amount=o.amount, currency=o.currency,
                 color=_event_color(o.event_type), payload=o,
             ))
 
         for inst in self._installment_use_cases.list_installments(date_from=date_from, date_to=date_to):
             add(CalendarEntry(
                 entry_date=inst.due_date, kind="installment",
-                label=f"Installment #{inst.installment_number}", amount=inst.amount,
-                currency="R$", color=theme.PRIMARY, payload=inst,
+                label=t("calendar.installment_label", number=inst.installment_number),
+                amount=inst.amount,
+                currency="BRL", color=theme.PRIMARY, payload=inst,
             ))
 
         for day_entries in buckets.values():
@@ -325,12 +335,12 @@ class CalendarWidget(QWidget):
         else:
             day_totals, balances = {}, {}
 
-        self._period_label.setText(self._current_date.strftime("%B %Y"))
+        self._period_label.setText(format_month_year(self._current_date))
 
         grid = QGridLayout()
         grid.setSpacing(4)
         for col, wd in enumerate(_weekday_order()):
-            lbl = QLabel(calendar.day_abbr[wd])
+            lbl = QLabel(weekday_abbr(wd))
             lbl.setAlignment(Qt.AlignCenter)
             lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-weight: bold;")
             grid.addWidget(lbl, 0, col)
@@ -387,7 +397,7 @@ class CalendarWidget(QWidget):
         overflow = len(entries) - _MAX_MONTH_CHIPS
         if overflow > 0:
             more = QToolButton()
-            more.setText(f"+{overflow} more")
+            more.setText(t("calendar.more", count=overflow))
             more.setStyleSheet(
                 f"QToolButton {{ border: none; color: {theme.TEXT_SECONDARY};"
                 f" font-size: {theme.SMALL_FONT_SIZE}pt; text-align: left; }}"
@@ -424,27 +434,38 @@ class CalendarWidget(QWidget):
         dim = "" if in_month else "opacity: 0.6;"
         proj = "font-style: italic;" if is_future else ""
         small = f"font-size: {theme.SMALL_FONT_SIZE}pt; border: none;"
-        proj_word = "Projected " if is_future else ""
 
         if income or expense:
             flow = QHBoxLayout()
             flow.setContentsMargins(0, 0, 0, 0)
             flow.setSpacing(4)
             if income:
-                inc = QLabel(f"+{income:,.0f}")
-                inc.setToolTip(f"{proj_word}income: R$ {income:,.2f}")
+                inc = QLabel(f"+{format_number(income, 0)}")
+                inc.setToolTip(t(
+                    "calendar.tooltip_income_projected" if is_future
+                    else "calendar.tooltip_income",
+                    amount=format_currency(income, "BRL"),
+                ))
                 inc.setStyleSheet(f"color: {theme.INCOME}; {small} {dim} {proj}")
                 flow.addWidget(inc)
             flow.addStretch()
             if expense:
-                exp = QLabel(f"-{expense:,.0f}")
-                exp.setToolTip(f"{proj_word}expenses: R$ {expense:,.2f}")
+                exp = QLabel(f"-{format_number(expense, 0)}")
+                exp.setToolTip(t(
+                    "calendar.tooltip_expenses_projected" if is_future
+                    else "calendar.tooltip_expenses",
+                    amount=format_currency(expense, "BRL"),
+                ))
                 exp.setStyleSheet(f"color: {theme.EXPENSE}; {small} {dim} {proj}")
                 flow.addWidget(exp)
             outer.addLayout(flow)
 
-        bal = QLabel(f"R$ {balance:,.0f}")
-        bal.setToolTip(f"{proj_word}total across all accounts: R$ {balance:,.2f}")
+        bal = QLabel(format_currency(balance, "BRL", 0))
+        bal.setToolTip(t(
+            "calendar.tooltip_balance_projected" if is_future
+            else "calendar.tooltip_balance",
+            amount=format_currency(balance, "BRL"),
+        ))
         bal.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         bal_color = theme.TEXT_PRIMARY if balance >= 0 else theme.EXPENSE
         bal.setStyleSheet(f"color: {bal_color}; {small} font-weight: bold; {dim} {proj}")
@@ -458,13 +479,17 @@ class CalendarWidget(QWidget):
 
         end = days[-1]
         if week_start.year == end.year:
-            self._period_label.setText(
-                f"{week_start.strftime('%b %d')} - {end.strftime('%b %d, %Y')}"
-            )
+            self._period_label.setText(t(
+                "calendar.week_range",
+                start=format_day_month(week_start),
+                end=f"{format_day_month(end)}, {end.year}",
+            ))
         else:
-            self._period_label.setText(
-                f"{week_start.strftime('%b %d, %Y')} - {end.strftime('%b %d, %Y')}"
-            )
+            self._period_label.setText(t(
+                "calendar.week_range",
+                start=f"{format_day_month(week_start)}, {week_start.year}",
+                end=f"{format_day_month(end)}, {end.year}",
+            ))
 
         columns = QHBoxLayout()
         columns.setSpacing(6)
@@ -487,7 +512,7 @@ class CalendarWidget(QWidget):
         v.setContentsMargins(6, 6, 6, 6)
         v.setSpacing(4)
 
-        head = QLabel(f"{calendar.day_abbr[day.weekday()]} {day.day}")
+        head = QLabel(f"{weekday_abbr(day.weekday())} {day.day}")
         head.setAlignment(Qt.AlignCenter)
         head.setStyleSheet(
             f"color: {theme.PRIMARY if is_today else theme.TEXT_PRIMARY}; border: none;"
@@ -516,14 +541,14 @@ class CalendarWidget(QWidget):
         buckets = self._load_entries(day, day + timedelta(days=1))
         entries = buckets.get(day, [])
 
-        self._period_label.setText(day.strftime("%A, %b %d, %Y"))
+        self._period_label.setText(format_weekday_date(day))
 
         body = QVBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(6)
 
         if not entries:
-            empty = QLabel("Nothing scheduled.")
+            empty = QLabel(t("calendar.nothing_scheduled"))
             empty.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
             body.addWidget(empty)
         else:
@@ -570,7 +595,7 @@ class CalendarWidget(QWidget):
             text_box.addWidget(sub)
         h.addLayout(text_box, 1)
 
-        amount = QLabel(f"{entry.currency} {entry.amount:.2f}")
+        amount = QLabel(format_currency(entry.amount, entry.currency))
         amount.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         amt_font = QFont()
         amt_font.setBold(True)
@@ -581,7 +606,7 @@ class CalendarWidget(QWidget):
         edit = QToolButton()
         edit.setIcon(icons.icon("fa6s.ellipsis-vertical"))
         edit.setStyleSheet("QToolButton { border: none; }")
-        edit.setToolTip("Actions")
+        edit.setToolTip(t("common.actions"))
         edit.clicked.connect(lambda _=False, e=entry: self._on_entry_clicked(e))
         h.addWidget(edit)
 
@@ -593,7 +618,7 @@ class CalendarWidget(QWidget):
     def _entry_context(self, entry: CalendarEntry) -> str:
         payload = entry.payload
         if entry.kind == "installment":
-            return f"Status: {payload.status}"
+            return t("calendar.status", status=installment_status_label(payload.status))
         parts = []
         cat = self._categories_map.get(getattr(payload, "category_id", None))
         acc = self._accounts_map.get(getattr(payload, "account_id", None))
@@ -606,9 +631,10 @@ class CalendarWidget(QWidget):
     # --------------------------------------------------------------- chip ---
     def _make_chip(self, entry: CalendarEntry, compact: bool) -> QToolButton:
         btn = QToolButton()
-        text = entry.label if compact else f"{entry.label}  {entry.currency} {entry.amount:.2f}"
+        amount_text = format_currency(entry.amount, entry.currency)
+        text = entry.label if compact else f"{entry.label}  {amount_text}"
         btn.setText(text)
-        btn.setToolTip(f"{entry.label}\n{entry.currency} {entry.amount:.2f}")
+        btn.setToolTip(f"{entry.label}\n{amount_text}")
         btn.setCursor(Qt.PointingHandCursor)
         # Ignored (not Expanding) so a long label never dictates the cell/column
         # width — the chip fills whatever width the cell gives it and clips,
@@ -639,21 +665,24 @@ class CalendarWidget(QWidget):
 
     def _show_recurring_menu(self, occ):
         menu = QMenu(self)
-        menu.addAction(icons.icon("fa6s.check"), "Confirm",
+        menu.addAction(icons.icon("fa6s.check"), t("calendar.confirm"),
                        lambda: self.confirm_occurrence_requested.emit(occ))
-        menu.addAction(icons.icon("fa6s.forward-step"), "Skip",
+        menu.addAction(icons.icon("fa6s.forward-step"), t("calendar.skip"),
                        lambda: self.skip_occurrence_requested.emit(
                            occ.recurring_event_id, occ.occurrence_date))
         menu.exec(_cursor_pos())
 
     def _show_installment_detail(self, inst):
         QMessageBox.information(
-            self, "Installment",
-            f"Installment #{inst.installment_number}\n"
-            f"Due: {inst.due_date.isoformat()}\n"
-            f"Amount: R$ {inst.amount:.2f}\n"
-            f"Status: {inst.status}\n"
-            f"Plan: {inst.installment_plan_id}",
+            self, t("calendar.installment_title"),
+            t(
+                "calendar.installment_detail",
+                number=inst.installment_number,
+                due=format_date(inst.due_date),
+                amount=format_currency(inst.amount, "BRL"),
+                status=installment_status_label(inst.status),
+                plan=inst.installment_plan_id,
+            ),
         )
 
 

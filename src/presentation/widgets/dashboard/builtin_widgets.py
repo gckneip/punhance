@@ -11,21 +11,15 @@ from PySide6.QtWidgets import (
 
 from src.application.dto.financial_event_dto import CreateFinancialEventDTO
 from src.domain.entities.financial_event import EventType
-from src.presentation import icons, theme
+from src.presentation import i18n, icons, theme
+from src.presentation.i18n import t
+from src.presentation.labels import event_type_label, payment_method_label
 from src.presentation.widgets.account_credit_card_selector import AccountCreditCardSelector
 from src.presentation.widgets.currency_spin_box import CurrencySpinBox
 from src.presentation.widgets.stat_card import make_stat_card
 
 INCOME_TYPES = ("income", "refund")
 EXPENSE_TYPES = ("expense", "purchase", "card_payment", "loan_payment", "investment")
-
-PAYMENT_METHOD_LABELS = {
-    "cash": "Cash",
-    "debit_card": "Debit Card",
-    "credit_card": "Credit Card",
-    "pix": "PIX",
-    "bank_transfer": "Bank Transfer",
-}
 
 
 def split_event_rows(
@@ -41,7 +35,7 @@ def split_event_rows(
     categories_map = {c.id: c.name for c in (categories or [])}
     cards_map = {c.id: c.name for c in (credit_cards or [])}
     payment_methods_map = {
-        p.financial_event_id: PAYMENT_METHOD_LABELS.get(p.payment_method, p.payment_method)
+        p.financial_event_id: payment_method_label(p.payment_method)
         for p in (purchases or [])
     }
     purchase_cards_map = {
@@ -53,7 +47,7 @@ def split_event_rows(
     recent_rows = []
     future_rows = []
     for e in events:
-        cat_name = "Multiple" if (e.category_id is None and e.id in multi_category_event_ids) \
+        cat_name = t("builtin.multiple_categories") if (e.category_id is None and e.id in multi_category_event_ids) \
             else categories_map.get(e.category_id, str(e.category_id or ""))
         if e.account_id:
             acc_name = accounts_map.get(e.account_id, str(e.account_id))
@@ -111,7 +105,7 @@ class QuickAddBarWidget(QFrame):
         outer.setContentsMargins(14, 12, 14, 12)
         outer.setSpacing(6)
 
-        hint = QLabel("Quick add")
+        hint = QLabel(t("builtin.quick_add"))
         hint.setStyleSheet(f"font-size: {theme.SMALL_FONT_SIZE}px; font-weight: 600; color: {theme.TEXT_SECONDARY};")
         outer.addWidget(hint)
 
@@ -119,18 +113,19 @@ class QuickAddBarWidget(QFrame):
         row.setSpacing(8)
 
         self._qa_type = QComboBox()
-        self._qa_type.addItems(["Expense", "Income"])
+        self._qa_type.addItem(event_type_label(EventType.EXPENSE), EventType.EXPENSE)
+        self._qa_type.addItem(event_type_label(EventType.INCOME), EventType.INCOME)
         row.addWidget(self._qa_type)
 
         self._qa_description = QLineEdit()
-        self._qa_description.setPlaceholderText("What was it?")
+        self._qa_description.setPlaceholderText(t("builtin.quick_add_placeholder"))
         self._qa_description.returnPressed.connect(self._quick_add)
         row.addWidget(self._qa_description, stretch=2)
 
         self._qa_amount = CurrencySpinBox()
         self._qa_amount.setRange(0, 999999)
         self._qa_amount.setDecimals(2)
-        self._qa_amount.setPrefix("R$ ")
+        self._qa_amount.setPrefix(f'{i18n.CURRENCY_SYMBOLS["BRL"]} ')
         row.addWidget(self._qa_amount)
 
         self._qa_category = QComboBox()
@@ -139,7 +134,7 @@ class QuickAddBarWidget(QFrame):
         self._qa_selector = AccountCreditCardSelector()
         row.addWidget(self._qa_selector)
 
-        self._qa_button = QPushButton("Add")
+        self._qa_button = QPushButton(t("common.add"))
         self._qa_button.setObjectName("primaryButton")
         self._qa_button.clicked.connect(self._quick_add)
         row.addWidget(self._qa_button)
@@ -159,7 +154,7 @@ class QuickAddBarWidget(QFrame):
         self._qa_category.blockSignals(True)
 
         self._qa_category.clear()
-        self._qa_category.addItem("No category", None)
+        self._qa_category.addItem(t("builtin.no_category"), None)
         for c in categories or []:
             self._qa_category.addItem(c.name, c.id)
 
@@ -177,17 +172,17 @@ class QuickAddBarWidget(QFrame):
         amount = self._qa_amount.value()
 
         if not description:
-            self._show_status("Description is required.", theme.EXPENSE)
+            self._show_status(t("builtin.error_description_required"), theme.EXPENSE)
             return
         if amount == 0:
-            self._show_status("Amount cannot be zero.", theme.EXPENSE)
+            self._show_status(t("builtin.error_amount_zero"), theme.EXPENSE)
             return
         selector_error = self._qa_selector.validation_error()
         if selector_error:
             self._show_status(selector_error, theme.EXPENSE)
             return
 
-        event_type = EventType.INCOME if self._qa_type.currentText() == "Income" else EventType.EXPENSE
+        event_type = self._qa_type.currentData()
         dto = CreateFinancialEventDTO(
             event_type=event_type,
             event_date=date.today(),
@@ -202,7 +197,7 @@ class QuickAddBarWidget(QFrame):
         self._qa_description.clear()
         self._qa_amount.setValue(0)
         self._qa_description.setFocus()
-        self._show_status("Added", theme.INCOME, clear_after_ms=2000)
+        self._show_status(t("builtin.added"), theme.INCOME, clear_after_ms=2000)
         self.entry_added.emit()
 
     def _show_status(self, text: str, color: str, clear_after_ms: int = None):
@@ -231,7 +226,7 @@ class EventsTableWidget(QWidget):
 
         toolbar = QHBoxLayout()
         toolbar.addStretch()
-        self._btn_delete_selected = QPushButton("Delete Selected")
+        self._btn_delete_selected = QPushButton(t("common.delete_selected"))
         self._btn_delete_selected.setIcon(icons.icon("fa6s.trash", color=theme.EXPENSE))
         self._btn_delete_selected.clicked.connect(self._delete_selected)
         toolbar.addWidget(self._btn_delete_selected)
@@ -239,14 +234,15 @@ class EventsTableWidget(QWidget):
 
         self._table = QTableWidget()
         self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels(
-            ["Date", "Type", "Description", "Amount", "Category", "Account/Card", "Payment Method", "Actions"]
-        )
+        self._table.setHorizontalHeaderLabels([
+            t("common.date"), t("common.type"), t("common.description"), t("common.amount"),
+            t("common.category"), t("builtin.account_card"), t("builtin.payment_method"), t("common.actions"),
+        ])
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
-        self._table.setToolTip("Double-click a row to edit that event, or select rows and use Delete Selected")
+        self._table.setToolTip(t("builtin.events_table_tooltip"))
         self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
         layout.addWidget(self._table)
 
@@ -255,11 +251,11 @@ class EventsTableWidget(QWidget):
         self._table.setRowCount(0)
         self._table.setRowCount(len(rows))
         for i, row in enumerate(rows):
-            self._table.setItem(i, 0, QTableWidgetItem(row["date"].isoformat()))
-            self._table.setItem(i, 1, QTableWidgetItem(row["event_type"]))
+            self._table.setItem(i, 0, QTableWidgetItem(i18n.format_date(row["date"])))
+            self._table.setItem(i, 1, QTableWidgetItem(event_type_label(row["event_type"])))
             self._table.setItem(i, 2, QTableWidgetItem(row["description"]))
 
-            amount_item = QTableWidgetItem(f"{row['currency']} {row['amount']:.2f}")
+            amount_item = QTableWidgetItem(i18n.format_currency(row["amount"], row["currency"]))
             if row["event_type"] in INCOME_TYPES:
                 amount_item.setForeground(QColor(theme.INCOME))
             elif row["event_type"] in EXPENSE_TYPES:
@@ -280,8 +276,8 @@ class EventsTableWidget(QWidget):
         row_layout.setContentsMargins(2, 2, 2, 2)
         row_layout.setSpacing(4)
         for label, icon_name, color, handler in [
-            ("Edit", "fa6s.pen", None, lambda _: self.edit_event_requested.emit(event_id)),
-            ("Delete", "fa6s.trash", theme.EXPENSE, lambda _: self._delete_event(event_id)),
+            (t("common.edit"), "fa6s.pen", None, lambda _: self.edit_event_requested.emit(event_id)),
+            (t("common.delete"), "fa6s.trash", theme.EXPENSE, lambda _: self._delete_event(event_id)),
         ]:
             btn = QPushButton()
             btn.setIcon(icons.icon(icon_name, color=color))
@@ -305,7 +301,7 @@ class EventsTableWidget(QWidget):
         if self._financial_event_use_cases is None:
             return
         reply = QMessageBox.question(
-            self, "Delete Event", "Are you sure you want to delete this event?",
+            self, t("builtin.delete_event_title"), t("builtin.delete_event_message"),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
@@ -321,7 +317,8 @@ class EventsTableWidget(QWidget):
         if not event_ids:
             return
         reply = QMessageBox.question(
-            self, "Delete Events", f"Are you sure you want to delete {len(event_ids)} selected event(s)?",
+            self, t("builtin.delete_events_title"),
+            t("builtin.delete_events_message", count=len(event_ids)),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
@@ -337,11 +334,11 @@ class SavingsRateStatWidget(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self._value_label = QLabel("0.0%")
-        layout.addWidget(make_stat_card("Savings Rate", self._value_label))
+        layout.addWidget(make_stat_card(t("builtin.savings_rate"), self._value_label))
 
     def set_rate(self, income: float, expenses: float):
         rate = 0.0
         if income > 0:
             rate = ((income - expenses) / income) * 100
-        self._value_label.setText(f"{rate:.1f}%")
+        self._value_label.setText(f"{i18n.format_number(rate, 1)}%")
         self._value_label.setStyleSheet(f"color: {theme.INCOME if rate >= 0 else theme.EXPENSE};")

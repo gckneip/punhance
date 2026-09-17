@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from src.domain.entities.purchase import Purchase
 from src.domain.entities.purchase_item import PurchaseItem
 
@@ -47,4 +47,8 @@ class PurchaseRepository(ABC):
 
     @abstractmethod
     def delete_items_by_purchase(self, purchase_id: str, commit: bool = True) -> None:
+        pass
+
+    @abstractmethod
+    def find_product_prices_with_counterparty(self) -> List[Tuple[str, float, Optional[str]]]:
         pass

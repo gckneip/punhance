@@ -2,11 +2,13 @@ from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QVBoxLayout, QMessageBox,
 )
 
+from src.presentation.i18n import t
+
 
 class ProductDialog(QDialog):
     def __init__(self, parent=None, product=None):
         super().__init__(parent)
-        self.setWindowTitle("Edit Product" if product else "Create Product")
+        self.setWindowTitle(t("product_dialog.title_edit") if product else t("product_dialog.title_create"))
         self.setModal(True)
         self.resize(350, 120)
 
@@ -14,7 +16,7 @@ class ProductDialog(QDialog):
         form = QFormLayout()
 
         self.name_edit = QLineEdit()
-        form.addRow("Name:", self.name_edit)
+        form.addRow(f'{t("common.name")}:', self.name_edit)
 
         layout.addLayout(form)
 
@@ -28,7 +30,7 @@ class ProductDialog(QDialog):
 
     def _validate_and_accept(self):
         if not self.name_edit.text().strip():
-            QMessageBox.warning(self, "Validation", "Name is required.")
+            QMessageBox.warning(self, t("common.warning"), t("product_dialog.name_required"))
             return
         self.accept()
 

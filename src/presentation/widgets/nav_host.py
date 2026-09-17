@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.presentation import icons, theme
+from src.presentation.i18n import t
 
 NAV_COLLAPSED_WIDTH = 64
 _MIN_EXPANDED_WIDTH = 160
@@ -90,7 +91,7 @@ class SidebarNavHost(QWidget):
 
         self._toggle_btn = QPushButton()
         self._toggle_btn.setIcon(icons.icon("fa6s.bars"))
-        self._toggle_btn.setToolTip("Collapse/expand the sidebar")
+        self._toggle_btn.setToolTip(t("nav.toggle_tooltip"))
         self._toggle_btn.setFixedWidth(26)
         self._toggle_btn.clicked.connect(self._on_hamburger_clicked)
         toggle_row.addWidget(self._toggle_btn)
@@ -246,9 +247,7 @@ class SidebarNavHost(QWidget):
         pinned = self._mode == "fixed"
         self._mode_btn.setIcon(icons.icon("fa6s.thumbtack", color=theme.PRIMARY if pinned else theme.TEXT_SECONDARY))
         self._mode_btn.setToolTip(
-            "Pinned: sidebar always docked - click to make it an overlay drawer"
-            if pinned else
-            "Drawer: sidebar overlays the page on demand - click to pin it docked"
+            t("nav.pinned_tooltip") if pinned else t("nav.drawer_tooltip")
         )
 
     def _update_expanded_width(self, label):

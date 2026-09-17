@@ -120,6 +120,18 @@ class SQLitePurchaseRepository(PurchaseRepository):
         if commit:
             self._conn.commit()
 
+    def find_product_prices_with_counterparty(self):
+        cursor = self._conn.execute(
+            """SELECT purchase_items.product_id, purchase_items.unit_price, purchases.counterparty_id
+               FROM purchase_items
+               JOIN purchases ON purchase_items.purchase_id = purchases.id
+               WHERE purchase_items.product_id IS NOT NULL"""
+        )
+        return [
+            (row["product_id"], row["unit_price"], row["counterparty_id"])
+            for row in cursor.fetchall()
+        ]
+
     def _row_to_purchase(self, row: sqlite3.Row) -> Purchase:
         inv_date = None
         if row["invoice_date"]:

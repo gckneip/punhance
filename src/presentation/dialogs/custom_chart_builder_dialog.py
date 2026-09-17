@@ -8,20 +8,31 @@ from PySide6.QtWidgets import (
 )
 
 from src.domain.services.chart_data_service import VALID_GROUP_BYS, GroupByDimension, MetricType
-from src.presentation.widgets.dashboard.generic_widget_renderer import METRIC_LABELS, build_generic_content
+from src.presentation.i18n import t
+from src.presentation.widgets.dashboard.generic_widget_renderer import metric_label, build_generic_content
 from src.presentation.widgets.dashboard.preview_drawer import PreviewDrawer
 
-CHART_TYPE_LABELS = [("line", "Line"), ("bar", "Bar"), ("pie", "Pie"), ("table", "Table"), ("stat", "Stat")]
 
-GROUP_BY_LABELS = {
-    GroupByDimension.NONE: "None (single total)",
-    GroupByDimension.MONTH: "Month",
-    GroupByDimension.CATEGORY: "Category",
-    GroupByDimension.ACCOUNT: "Account",
-    GroupByDimension.COUNTERPARTY: "Counterparty",
-    GroupByDimension.CREDIT_CARD: "Credit Card",
-    GroupByDimension.PRODUCT: "Product",
-}
+def _chart_type_labels():
+    return [
+        ("line", t("chart.type.line")),
+        ("bar", t("chart.type.bar")),
+        ("pie", t("chart.type.pie")),
+        ("table", t("chart.type.table")),
+        ("stat", t("chart.type.stat")),
+    ]
+
+
+def _group_by_labels():
+    return {
+        GroupByDimension.NONE: t("chart_builder.group_by.none"),
+        GroupByDimension.MONTH: t("chart_builder.group_by.month"),
+        GroupByDimension.CATEGORY: t("common.category"),
+        GroupByDimension.ACCOUNT: t("common.account"),
+        GroupByDimension.COUNTERPARTY: t("chart_builder.group_by.counterparty"),
+        GroupByDimension.CREDIT_CARD: t("chart_builder.group_by.credit_card"),
+        GroupByDimension.PRODUCT: t("chart_builder.group_by.product"),
+    }
 
 
 def _multi_select_list(entities) -> QListWidget:
@@ -46,7 +57,7 @@ class CustomChartBuilderDialog(QDialog):
         credit_cards=None, chart_data_service=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle("Create Custom Widget")
+        self.setWindowTitle(t("chart_builder.title"))
         self.setModal(True)
         self.resize(820, 620)
 
@@ -79,87 +90,89 @@ class CustomChartBuilderDialog(QDialog):
 
         # Default to a single checked metric so group-by options (and the preview) populate immediately.
         self._metrics_list.item(0).setCheckState(Qt.Checked)
+        self._refresh_forecast_enabled()
 
     def _build_chart_group(self) -> QGroupBox:
-        group = QGroupBox("Chart")
+        group = QGroupBox(t("chart_builder.group.chart"))
         form = QFormLayout(group)
 
         self._title_edit = QLineEdit()
-        self._title_edit.setPlaceholderText("Widget title")
+        self._title_edit.setPlaceholderText(t("chart_builder.title_placeholder"))
         self._title_edit.textChanged.connect(self._refresh_preview)
-        form.addRow("Title:", self._title_edit)
+        form.addRow(t("chart_builder.field.title"), self._title_edit)
 
         self._chart_type_combo = QComboBox()
-        for value, label in CHART_TYPE_LABELS:
+        for value, label in _chart_type_labels():
             self._chart_type_combo.addItem(label, value)
         self._chart_type_combo.currentIndexChanged.connect(self._on_chart_type_changed)
-        form.addRow("Chart type:", self._chart_type_combo)
+        form.addRow(t("chart_builder.field.chart_type"), self._chart_type_combo)
 
         self._metrics_list = QListWidget()
         self._metrics_list.setMaximumHeight(120)
         for metric in MetricType:
-            item = QListWidgetItem(METRIC_LABELS.get(metric, metric.value))
+            item = QListWidgetItem(metric_label(metric))
             item.setData(Qt.UserRole, metric)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             item.setCheckState(Qt.Unchecked)
             self._metrics_list.addItem(item)
         self._metrics_list.itemChanged.connect(self._on_metrics_changed)
-        form.addRow("Metrics:", self._metrics_list)
+        form.addRow(t("chart_builder.field.metrics"), self._metrics_list)
 
         self._group_by_combo = QComboBox()
         self._group_by_combo.currentIndexChanged.connect(self._on_group_by_changed)
-        form.addRow("Group by:", self._group_by_combo)
+        form.addRow(t("chart_builder.field.group_by"), self._group_by_combo)
 
         self._split_by_combo = QComboBox()
-        self._split_by_combo.setToolTip(
-            "Draw one line/bar per value of this dimension (e.g. one line per "
-            "counterparty) across the same month axis. Only available for a single "
-            "metric grouped by Month, on a line or bar chart."
-        )
+        self._split_by_combo.setToolTip(t("chart_builder.split_by.tooltip"))
         self._split_by_combo.currentIndexChanged.connect(self._on_split_by_changed)
-        form.addRow("Split into series by:", self._split_by_combo)
+        form.addRow(t("chart_builder.field.split_by"), self._split_by_combo)
 
         self._top_n_spin = QSpinBox()
         self._top_n_spin.setRange(2, 20)
         self._top_n_spin.setValue(6)
-        self._top_n_spin.setToolTip(
-            "Keep the top series by total value; the rest are folded into \"Other\"."
-        )
+        self._top_n_spin.setToolTip(t("chart_builder.top_n.tooltip"))
         self._top_n_spin.valueChanged.connect(self._refresh_preview)
-        form.addRow("Show top:", self._top_n_spin)
+        form.addRow(t("chart_builder.field.top_n"), self._top_n_spin)
+
+        self._forecast_spin = QSpinBox()
+        self._forecast_spin.setRange(0, 24)
+        self._forecast_spin.setValue(0)
+        self._forecast_spin.setToolTip(t("chart_builder.forecast.tooltip"))
+        self._forecast_spin.valueChanged.connect(self._refresh_preview)
+        form.addRow(t("chart_builder.field.forecast_months"), self._forecast_spin)
 
         return group
 
     def _build_filters_group(self) -> QGroupBox:
-        group = QGroupBox("Filters (optional)")
+        group = QGroupBox(t("chart_builder.group.filters"))
         form = QFormLayout(group)
-        hint = QLabel("Leave a list empty to not restrict by it.")
+        hint = QLabel(t("chart_builder.filters_hint"))
         hint.setWordWrap(True)
         form.addRow(hint)
 
         self._account_filter = _multi_select_list(self._accounts)
         self._account_filter.itemSelectionChanged.connect(self._refresh_preview)
-        form.addRow("Accounts:", self._account_filter)
+        form.addRow(t("chart_builder.field.accounts"), self._account_filter)
         self._category_filter = _multi_select_list(self._categories)
         self._category_filter.itemSelectionChanged.connect(self._refresh_preview)
-        form.addRow("Categories:", self._category_filter)
+        form.addRow(t("chart_builder.field.categories"), self._category_filter)
         self._counterparty_filter = _multi_select_list(self._counterparties)
         self._counterparty_filter.itemSelectionChanged.connect(self._refresh_preview)
-        form.addRow("Counterparties:", self._counterparty_filter)
+        form.addRow(t("chart_builder.field.counterparties"), self._counterparty_filter)
         self._credit_card_filter = _multi_select_list(self._credit_cards)
         self._credit_card_filter.itemSelectionChanged.connect(self._refresh_preview)
-        form.addRow("Credit cards:", self._credit_card_filter)
+        form.addRow(t("chart_builder.field.credit_cards"), self._credit_card_filter)
         return group
 
     def _build_date_range_group(self) -> QGroupBox:
-        group = QGroupBox("Date range")
+        group = QGroupBox(t("chart_builder.group.date_range"))
         outer = QVBoxLayout(group)
 
         radios = QHBoxLayout()
         self._mode_group = QButtonGroup(self)
-        self._fixed_radio = QRadioButton("Fixed")
-        self._rolling_radio = QRadioButton("Rolling")
-        self._calendar_radio = QRadioButton("Calendar")
+        self._fixed_radio = QRadioButton(t("chart_builder.date_mode.fixed"))
+        self._rolling_radio = QRadioButton(t("chart_builder.date_mode.rolling"))
+        self._calendar_radio = QRadioButton(t("chart_builder.date_mode.calendar"))
         self._rolling_radio.setChecked(True)
         for i, radio in enumerate([self._fixed_radio, self._rolling_radio, self._calendar_radio]):
             self._mode_group.addButton(radio, i)
@@ -186,8 +199,8 @@ class CustomChartBuilderDialog(QDialog):
         self._fixed_to = QDateEdit()
         self._fixed_to.setCalendarPopup(True)
         self._fixed_to.dateChanged.connect(self._refresh_preview)
-        form.addRow("From:", self._fixed_from)
-        form.addRow("To:", self._fixed_to)
+        form.addRow(t("chart_builder.field.from"), self._fixed_from)
+        form.addRow(t("chart_builder.field.to"), self._fixed_to)
         return panel
 
     def _build_rolling_panel(self) -> QWidget:
@@ -198,27 +211,27 @@ class CustomChartBuilderDialog(QDialog):
         self._rolling_amount.setValue(6)
         self._rolling_amount.valueChanged.connect(self._refresh_preview)
         self._rolling_unit = QComboBox()
-        self._rolling_unit.addItem("Months", "months")
-        self._rolling_unit.addItem("Days", "days")
+        self._rolling_unit.addItem(t("chart_builder.unit.months"), "months")
+        self._rolling_unit.addItem(t("chart_builder.unit.days"), "days")
         self._rolling_unit.currentIndexChanged.connect(self._refresh_preview)
-        form.addRow("Last:", self._rolling_amount)
-        form.addRow("Unit:", self._rolling_unit)
+        form.addRow(t("chart_builder.field.last"), self._rolling_amount)
+        form.addRow(t("chart_builder.field.unit"), self._rolling_unit)
         return panel
 
     def _build_calendar_panel(self) -> QWidget:
         panel = QWidget()
         form = QFormLayout(panel)
         self._calendar_period = QComboBox()
-        self._calendar_period.addItem("Month", "month")
-        self._calendar_period.addItem("Year", "year")
+        self._calendar_period.addItem(t("chart_builder.period.month"), "month")
+        self._calendar_period.addItem(t("chart_builder.period.year"), "year")
         self._calendar_period.currentIndexChanged.connect(self._refresh_preview)
         self._calendar_offset = QSpinBox()
         self._calendar_offset.setRange(-24, 0)
         self._calendar_offset.setValue(0)
-        self._calendar_offset.setToolTip("0 = current period, -1 = previous period, ...")
+        self._calendar_offset.setToolTip(t("chart_builder.offset.tooltip"))
         self._calendar_offset.valueChanged.connect(self._refresh_preview)
-        form.addRow("Period:", self._calendar_period)
-        form.addRow("Offset:", self._calendar_offset)
+        form.addRow(t("chart_builder.field.period"), self._calendar_period)
+        form.addRow(t("chart_builder.field.offset"), self._calendar_offset)
         return panel
 
     def _selected_metrics(self) -> List[MetricType]:
@@ -245,6 +258,7 @@ class CustomChartBuilderDialog(QDialog):
                 self._metrics_list.blockSignals(False)
         self._refresh_group_by_options()
         self._refresh_split_by_options()
+        self._refresh_forecast_enabled()
         self._refresh_preview()
 
     def _on_metrics_changed(self, changed_item: QListWidgetItem):
@@ -257,11 +271,20 @@ class CustomChartBuilderDialog(QDialog):
             self._metrics_list.blockSignals(False)
         self._refresh_group_by_options()
         self._refresh_split_by_options()
+        self._refresh_forecast_enabled()
         self._refresh_preview()
 
     def _on_group_by_changed(self, *_args):
         self._refresh_split_by_options()
+        self._refresh_forecast_enabled()
         self._refresh_preview()
+
+    def _refresh_forecast_enabled(self):
+        is_line_month = (
+            self._chart_type() == "line"
+            and self._group_by_combo.currentData() == GroupByDimension.MONTH
+        )
+        self._forecast_spin.setEnabled(is_line_month)
 
     def _on_split_by_changed(self, *_args):
         self._top_n_spin.setEnabled(
@@ -283,10 +306,11 @@ class CustomChartBuilderDialog(QDialog):
 
         self._split_by_combo.blockSignals(True)
         self._split_by_combo.clear()
-        self._split_by_combo.addItem("Don't split", None)
+        self._split_by_combo.addItem(t("chart_builder.split_by.none"), None)
+        labels = _group_by_labels()
         for dim in GroupByDimension:
             if dim in allowed:
-                self._split_by_combo.addItem(GROUP_BY_LABELS.get(dim, dim.value), dim)
+                self._split_by_combo.addItem(labels.get(dim, dim.value), dim)
         if prev is not None:
             idx = self._split_by_combo.findData(prev)
             if idx >= 0:
@@ -317,9 +341,10 @@ class CustomChartBuilderDialog(QDialog):
 
         self._group_by_combo.blockSignals(True)
         self._group_by_combo.clear()
+        labels = _group_by_labels()
         for dim in GroupByDimension:
             if dim in allowed:
-                self._group_by_combo.addItem(GROUP_BY_LABELS.get(dim, dim.value), dim)
+                self._group_by_combo.addItem(labels.get(dim, dim.value), dim)
         if prev is not None:
             idx = self._group_by_combo.findData(prev)
             if idx >= 0:
@@ -327,19 +352,19 @@ class CustomChartBuilderDialog(QDialog):
         self._group_by_combo.blockSignals(False)
 
     def _refresh_preview(self, *_args):
-        title = self._title_edit.text().strip() or "Preview"
+        title = self._title_edit.text().strip() or t("chart.preview.title")
 
         if self._chart_data_service is None:
             self._preview.set_title(title)
-            self._preview.show_placeholder("Preview unavailable.")
+            self._preview.show_placeholder(t("chart_builder.preview.unavailable"))
             return
         if not self._selected_metrics():
             self._preview.set_title(title)
-            self._preview.show_placeholder("Select at least one metric to preview this widget.")
+            self._preview.show_placeholder(t("chart_builder.preview.select_metric"))
             return
         if self._group_by_combo.currentData() is None:
             self._preview.set_title(title)
-            self._preview.show_placeholder("Select a valid \"Group by\" option to preview this widget.")
+            self._preview.show_placeholder(t("chart_builder.preview.select_group_by"))
             return
 
         self._preview.set_title(title)
@@ -347,19 +372,19 @@ class CustomChartBuilderDialog(QDialog):
         try:
             content = build_generic_content(title, config, self._chart_data_service)
         except Exception:
-            self._preview.show_placeholder("Couldn't render a preview for this configuration.")
+            self._preview.show_placeholder(t("chart_builder.preview.render_error"))
             return
         self._preview.show_content(content, center=(config["chart_type"] == "stat"))
 
     def _validate_and_accept(self):
         if not self._title_edit.text().strip():
-            QMessageBox.warning(self, "Validation", "Title is required.")
+            QMessageBox.warning(self, t("chart_builder.validation.title"), t("chart_builder.validation.title_required"))
             return
         if not self._selected_metrics():
-            QMessageBox.warning(self, "Validation", "Select at least one metric.")
+            QMessageBox.warning(self, t("chart_builder.validation.title"), t("chart_builder.validation.metric_required"))
             return
         if self._group_by_combo.count() == 0:
-            QMessageBox.warning(self, "Validation", "No valid grouping for the selected metrics/chart type.")
+            QMessageBox.warning(self, t("chart_builder.validation.title"), t("chart_builder.validation.no_grouping"))
             return
         self.accept()
 
@@ -405,6 +430,8 @@ class CustomChartBuilderDialog(QDialog):
         if split_by_data is not None:
             config["split_by"] = split_by_data.value
             config["top_n"] = self._top_n_spin.value()
+        if self._forecast_spin.isEnabled() and self._forecast_spin.value() > 0:
+            config["forecast_months"] = self._forecast_spin.value()
         return config
 
     def get_data(self) -> dict:

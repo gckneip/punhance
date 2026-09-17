@@ -6,6 +6,8 @@ from PySide6.QtWidgets import (
 )
 
 from src.presentation.widgets.dashboard.dashboard_grid_widget import DashboardGridWidget
+from src.presentation.i18n import t
+from src.presentation.labels import localize_default_title
 
 
 class DashboardTabsWidget(QWidget):
@@ -68,7 +70,7 @@ class DashboardTabsWidget(QWidget):
         # Text also renders through the exact same QTabBar::tab paint path
         # as every real report tab, so it's an exact fit with one border.
         index = self._tabs.addTab(self._add_tab_placeholder, "+")
-        self._tabs.setTabToolTip(index, "Add report")
+        self._tabs.setTabToolTip(index, t("dashboard.add_report_tooltip"))
 
     def _add_tab_for_report(self, dashboard_id: str, name: str) -> int:
         grid = DashboardGridWidget(
@@ -83,7 +85,7 @@ class DashboardTabsWidget(QWidget):
             grid.refresh(**self._last_data_args)
         add_index = self._tabs.indexOf(self._add_tab_placeholder)
         insert_at = add_index if add_index >= 0 else self._tabs.count()
-        return self._tabs.insertTab(insert_at, grid, name)
+        return self._tabs.insertTab(insert_at, grid, localize_default_title(name))
 
     def _report_id_for_index(self, index: int) -> Optional[str]:
         widget = self._tabs.widget(index)
@@ -133,7 +135,7 @@ class DashboardTabsWidget(QWidget):
         self._on_add_report()
 
     def _on_add_report(self):
-        name, ok = QInputDialog.getText(self, "New Report", "Report name:")
+        name, ok = QInputDialog.getText(self, t("dashboard.new_report.title"), t("dashboard.report_name"))
         name = name.strip()
         if not ok or not name:
             return
@@ -148,7 +150,7 @@ class DashboardTabsWidget(QWidget):
         if report_id is None:
             return
         current_name = self._tabs.tabText(index)
-        name, ok = QInputDialog.getText(self, "Rename Report", "Report name:", text=current_name)
+        name, ok = QInputDialog.getText(self, t("dashboard.rename_report.title"), t("dashboard.report_name"), text=current_name)
         name = name.strip()
         if not ok or not name or name == current_name:
             return
@@ -160,8 +162,8 @@ class DashboardTabsWidget(QWidget):
         if index < 0 or self._is_add_tab(index):
             return
         menu = QMenu(self)
-        rename_action = menu.addAction("Rename")
-        delete_action = menu.addAction("Delete")
+        rename_action = menu.addAction(t("dashboard.menu.rename"))
+        delete_action = menu.addAction(t("common.delete"))
         delete_action.setEnabled(len(self._grids) > 1)
         action = menu.exec(self._tabs.tabBar().mapToGlobal(pos))
         if action == rename_action:
@@ -176,8 +178,8 @@ class DashboardTabsWidget(QWidget):
         if report_id is None:
             return
         reply = QMessageBox.question(
-            self, "Delete Report",
-            f'Delete the report "{self._tabs.tabText(index)}" and all of its widgets?',
+            self, t("dashboard.delete_report.title"),
+            t("dashboard.delete_report.body", name=self._tabs.tabText(index)),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if reply != QMessageBox.Yes:

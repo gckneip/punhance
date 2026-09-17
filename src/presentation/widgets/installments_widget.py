@@ -8,6 +8,8 @@ from PySide6.QtGui import QColor
 from src.application.dto.installment_dto import InstallmentDTO
 from src.application.dto.credit_card_dto import CreditCardDTO
 from src.presentation import theme
+from src.presentation.i18n import t, format_currency, format_date
+from src.presentation.labels import installment_status_label
 
 
 class InstallmentsWidget(QWidget):
@@ -25,15 +27,17 @@ class InstallmentsWidget(QWidget):
         filter_row = QHBoxLayout()
 
         self._card_combo = QComboBox()
-        filter_row.addWidget(QLabel("Card:"))
+        filter_row.addWidget(QLabel(t("installments.card_filter")))
         filter_row.addWidget(self._card_combo)
 
         self._status_combo = QComboBox()
-        self._status_combo.addItems(["All", "pending", "overdue"])
-        filter_row.addWidget(QLabel("Status:"))
+        self._status_combo.addItem(t("installments.status_all"), None)
+        self._status_combo.addItem(installment_status_label("pending"), "pending")
+        self._status_combo.addItem(installment_status_label("overdue"), "overdue")
+        filter_row.addWidget(QLabel(t("installments.status_filter")))
         filter_row.addWidget(self._status_combo)
 
-        self._btn_refresh = QPushButton("Refresh")
+        self._btn_refresh = QPushButton(t("installments.refresh"))
         self._btn_refresh.clicked.connect(self.refresh)
         filter_row.addWidget(self._btn_refresh)
 
@@ -42,9 +46,14 @@ class InstallmentsWidget(QWidget):
 
         self._table = EvenColumnsTableWidget()
         self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels(
-            ["Due Date", "Installment", "Amount", "Status", "Plan ID", "ID"]
-        )
+        self._table.setHorizontalHeaderLabels([
+            t("installments.col_due_date"),
+            t("installments.col_installment"),
+            t("common.amount"),
+            t("common.status"),
+            t("installments.col_plan_id"),
+            t("installments.col_id"),
+        ])
         self._table.setObjectName("mainTabTable")
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -53,7 +62,7 @@ class InstallmentsWidget(QWidget):
 
     def update_cards(self, credit_cards: List[CreditCardDTO]):
         self._card_combo.clear()
-        self._card_combo.addItem("All Cards", None)
+        self._card_combo.addItem(t("installments.all_cards"), None)
         for cc in credit_cards:
             self._card_combo.addItem(f"{cc.name} ({cc.issuer})", cc.id)
 
@@ -61,8 +70,7 @@ class InstallmentsWidget(QWidget):
         if credit_cards is not None:
             self.update_cards(credit_cards)
 
-        status_text = self._status_combo.currentText()
-        status = status_text if status_text != "All" else None
+        status = self._status_combo.currentData()
         card_id = self._card_combo.currentData()
 
         installments = self._installment_use_cases.list_installments(
@@ -73,11 +81,11 @@ class InstallmentsWidget(QWidget):
 
         self._table.setRowCount(len(installments))
         for i, inst in enumerate(installments):
-            self._table.setItem(i, 0, QTableWidgetItem(inst.due_date.isoformat()))
+            self._table.setItem(i, 0, QTableWidgetItem(format_date(inst.due_date)))
             self._table.setItem(i, 1, QTableWidgetItem(f"{inst.installment_number}"))
-            self._table.setItem(i, 2, QTableWidgetItem(f"R$ {inst.amount:.2f}"))
+            self._table.setItem(i, 2, QTableWidgetItem(format_currency(inst.amount, "BRL")))
 
-            status_item = QTableWidgetItem(inst.status)
+            status_item = QTableWidgetItem(installment_status_label(inst.status))
             if inst.status == "overdue":
                 status_item.setForeground(QColor(theme.EXPENSE))
             elif inst.status == "paid":

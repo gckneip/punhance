@@ -8,6 +8,8 @@ from src.domain.services.account_summary_service import AccountSummaryService
 from src.presentation.widgets.date_range_selector import DateRangeSelector
 from src.presentation.widgets.stat_card import make_stat_card
 from src.presentation import theme
+from src.presentation.i18n import t, format_currency
+from src.presentation.labels import account_type_label
 
 
 class AccountSummaryWidget(QWidget):
@@ -22,7 +24,7 @@ class AccountSummaryWidget(QWidget):
         layout.setSpacing(12)
 
         filter_row = QHBoxLayout()
-        filter_row.addWidget(QLabel("Period:"))
+        filter_row.addWidget(QLabel(t("account_summary.period")))
         self._date_range = DateRangeSelector(default_label="All Time")
         self._date_range.range_changed.connect(lambda _d: self.refresh())
         filter_row.addWidget(self._date_range)
@@ -33,22 +35,27 @@ class AccountSummaryWidget(QWidget):
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(12)
 
-        self._total_balance_label = QLabel("R$ 0.00")
-        cards_layout.addWidget(make_stat_card("Total Balance", self._total_balance_label))
+        self._total_balance_label = QLabel(format_currency(0, "BRL"))
+        cards_layout.addWidget(make_stat_card(t("account_summary.total_balance"), self._total_balance_label))
 
-        self._total_income_label = QLabel("R$ 0.00")
-        cards_layout.addWidget(make_stat_card("Total Income", self._total_income_label))
+        self._total_income_label = QLabel(format_currency(0, "BRL"))
+        cards_layout.addWidget(make_stat_card(t("account_summary.total_income"), self._total_income_label))
 
-        self._total_expenses_label = QLabel("R$ 0.00")
-        cards_layout.addWidget(make_stat_card("Total Expenses", self._total_expenses_label))
+        self._total_expenses_label = QLabel(format_currency(0, "BRL"))
+        cards_layout.addWidget(make_stat_card(t("account_summary.total_expenses"), self._total_expenses_label))
 
         layout.addLayout(cards_layout)
 
         self._table = EvenColumnsTableWidget()
         self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels(
-            ["Account", "Type", "Initial Balance", "Income", "Expenses", "Current Balance"]
-        )
+        self._table.setHorizontalHeaderLabels([
+            t("common.account"),
+            t("common.type"),
+            t("account_summary.col_initial_balance"),
+            t("account_summary.col_income"),
+            t("account_summary.col_expenses"),
+            t("account_summary.col_current_balance"),
+        ])
         self._table.setObjectName("mainTabTable")
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -64,9 +71,9 @@ class AccountSummaryWidget(QWidget):
             date_from=date_from, date_to=date_to + timedelta(days=1) if date_to else None
         )
 
-        self._total_balance_label.setText(f"R$ {summary.grand_total:.2f}")
-        self._total_income_label.setText(f"R$ {summary.total_income:.2f}")
-        self._total_expenses_label.setText(f"R$ {summary.total_expenses:.2f}")
+        self._total_balance_label.setText(format_currency(summary.grand_total, "BRL"))
+        self._total_income_label.setText(format_currency(summary.total_income, "BRL"))
+        self._total_expenses_label.setText(format_currency(summary.total_expenses, "BRL"))
         self._total_income_label.setStyleSheet(f"color: {theme.INCOME};")
         self._total_expenses_label.setStyleSheet(f"color: {theme.EXPENSE};")
         self._total_balance_label.setStyleSheet(
@@ -76,12 +83,12 @@ class AccountSummaryWidget(QWidget):
         self._table.setRowCount(len(summary.items))
         for i, item in enumerate(summary.items):
             self._table.setItem(i, 0, QTableWidgetItem(item.account_name))
-            self._table.setItem(i, 1, QTableWidgetItem(item.account_type))
-            self._table.setItem(i, 2, QTableWidgetItem(f"R$ {item.initial_balance:.2f}"))
-            self._table.setItem(i, 3, QTableWidgetItem(f"R$ {item.total_income:.2f}"))
-            self._table.setItem(i, 4, QTableWidgetItem(f"R$ {item.total_expenses:.2f}"))
+            self._table.setItem(i, 1, QTableWidgetItem(account_type_label(item.account_type)))
+            self._table.setItem(i, 2, QTableWidgetItem(format_currency(item.initial_balance, "BRL")))
+            self._table.setItem(i, 3, QTableWidgetItem(format_currency(item.total_income, "BRL")))
+            self._table.setItem(i, 4, QTableWidgetItem(format_currency(item.total_expenses, "BRL")))
 
-            balance_item = QTableWidgetItem(f"R$ {item.current_balance:.2f}")
+            balance_item = QTableWidgetItem(format_currency(item.current_balance, "BRL"))
             balance_item.setForeground(
                 QColor(theme.INCOME if item.current_balance >= 0 else theme.EXPENSE)
             )

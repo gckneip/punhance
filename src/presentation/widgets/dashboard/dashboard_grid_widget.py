@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
 from src.application.dto.dashboard_widget_dto import DashboardWidgetLayoutUpdateDTO
 from src.domain.services.chart_data_service import DateRangeSpec, GroupByDimension, MetricType
 from src.presentation import icons, theme
+from src.presentation.i18n import t
+from src.presentation.labels import localize_default_title
 from src.presentation.widgets.dashboard.builtin_widgets import (
     EventsTableWidget, QuickAddBarWidget, SavingsRateStatWidget, split_event_rows,
 )
@@ -260,13 +262,13 @@ class DashboardGridWidget(QWidget):
         outer.setSpacing(12)
 
         toolbar = QHBoxLayout()
-        self._edit_btn = QPushButton("Edit Layout")
+        self._edit_btn = QPushButton(t("dashboard.edit_layout"))
         self._edit_btn.setCheckable(True)
         self._edit_btn.setIcon(icons.icon("fa6s.pen"))
         self._edit_btn.toggled.connect(self._on_edit_toggled)
         toolbar.addWidget(self._edit_btn)
 
-        add_btn = QPushButton("+ Add Widget")
+        add_btn = QPushButton(t("dashboard.add_widget"))
         add_btn.setObjectName("primaryButton")
         add_btn.clicked.connect(self._on_add_widget)
         toolbar.addWidget(add_btn)
@@ -337,7 +339,7 @@ class DashboardGridWidget(QWidget):
             if dto.kind != "builtin" and widget_supports_period_ahead(dto.config):
                 days_ahead = self._effective_config(dto).get("days_ahead")
             frame = WidgetFrame(
-                dto.id, dto.title, content, dto.grid_row_span, dto.grid_col_span,
+                dto.id, localize_default_title(dto.title, dto.config), content, dto.grid_row_span, dto.grid_col_span,
                 date_range=date_range, days_ahead=days_ahead,
             )
             frame.set_edit_mode(self._edit_mode)
@@ -359,7 +361,7 @@ class DashboardGridWidget(QWidget):
             content = self._build_builtin_content(dto)
             self._builtin_content[dto.id] = content
             return content
-        return build_generic_content(dto.title, self._effective_config(dto), self._chart_data_service)
+        return build_generic_content(localize_default_title(dto.title, dto.config), self._effective_config(dto), self._chart_data_service)
 
     def _effective_config(self, dto) -> dict:
         """dto.config with any live (session-only) date-range/days-ahead
@@ -392,7 +394,7 @@ class DashboardGridWidget(QWidget):
         if key == "savings_rate_stat":
             return SavingsRateStatWidget()
         from PySide6.QtWidgets import QLabel
-        return QLabel(f"Unknown builtin widget: {key}")
+        return QLabel(t("dashboard.unknown_builtin", key=key))
 
     # -- data refresh (no structural change) ----------------------------------
 
@@ -431,7 +433,7 @@ class DashboardGridWidget(QWidget):
                     )
             else:
                 frame.set_content(
-                    build_generic_content(dto.title, self._effective_config(dto), self._chart_data_service)
+                    build_generic_content(localize_default_title(dto.title, dto.config), self._effective_config(dto), self._chart_data_service)
                 )
 
     # -- edit-mode interactions ------------------------------------------------
@@ -448,7 +450,7 @@ class DashboardGridWidget(QWidget):
         frame = self._frames.get(widget_id)
         if dto is None or frame is None:
             return
-        frame.set_content(build_generic_content(dto.title, self._effective_config(dto), self._chart_data_service))
+        frame.set_content(build_generic_content(localize_default_title(dto.title, dto.config), self._effective_config(dto), self._chart_data_service))
 
     def _on_widget_days_ahead_changed(self, widget_id: str, days_ahead: int):
         self._days_ahead_overrides[widget_id] = days_ahead
@@ -456,11 +458,11 @@ class DashboardGridWidget(QWidget):
         frame = self._frames.get(widget_id)
         if dto is None or frame is None:
             return
-        frame.set_content(build_generic_content(dto.title, self._effective_config(dto), self._chart_data_service))
+        frame.set_content(build_generic_content(localize_default_title(dto.title, dto.config), self._effective_config(dto), self._chart_data_service))
 
     def _on_delete_widget(self, widget_id: str):
         reply = QMessageBox.question(
-            self, "Delete Widget", "Remove this widget from your dashboard?",
+            self, t("dashboard.delete_widget.title"), t("dashboard.delete_widget.body"),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if reply != QMessageBox.Yes:

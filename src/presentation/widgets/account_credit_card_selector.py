@@ -2,6 +2,9 @@ from typing import Optional
 
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QWidget
 
+from src.presentation.i18n import t
+from src.presentation.labels import account_type_label
+
 
 class AccountCreditCardSelector(QWidget):
     """Every event/purchase must be tied to exactly one funding source: an
@@ -45,12 +48,12 @@ class AccountCreditCardSelector(QWidget):
         self.credit_card_combo.blockSignals(True)
 
         self.account_combo.clear()
-        self.account_combo.addItem("None", None)
+        self.account_combo.addItem(t("common.none"), None)
         for acc in accounts or []:
-            self.account_combo.addItem(f"{acc.name} ({acc.type})", acc.id)
+            self.account_combo.addItem(f"{acc.name} ({account_type_label(acc.type)})", acc.id)
 
         self.credit_card_combo.clear()
-        self.credit_card_combo.addItem("None", None)
+        self.credit_card_combo.addItem(t("common.none"), None)
         for card in credit_cards or []:
             self.credit_card_combo.addItem(card.name, card.id)
 
@@ -108,14 +111,14 @@ class AccountCreditCardSelector(QWidget):
         account_id, credit_card_id = self.account_id(), self.credit_card_id()
         if self._mode == self.MODE_BOTH:
             if account_id is None or credit_card_id is None:
-                return "Both an account and a credit card are required."
+                return t("selector.both_required")
         elif self._mode == self.MODE_ACCOUNT_ONLY:
             if account_id is None:
-                return "Account is required."
+                return t("selector.account_required")
         elif self._mode == self.MODE_CARD_ONLY:
             if credit_card_id is None:
-                return "Credit card is required."
+                return t("selector.card_required")
         else:
             if account_id is None and credit_card_id is None:
-                return "Select an account or a credit card."
+                return t("selector.account_or_card")
         return None

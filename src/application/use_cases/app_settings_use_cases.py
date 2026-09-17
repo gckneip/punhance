@@ -1,4 +1,6 @@
-from src.domain.entities.app_settings import NavigationStyle
+from typing import Optional
+
+from src.domain.entities.app_settings import Language, NavigationStyle
 from src.domain.entities.theme import DEFAULT_THEME_ID
 from src.domain.repositories.app_settings_repository import AppSettingsRepository
 
@@ -8,6 +10,7 @@ FONT_SIZE_KEY = "base_font_size"
 DEFAULT_BASE_FONT_SIZE = 20  # mirrors src.presentation.theme.DEFAULT_BASE_FONT_SIZE
 SIDEBAR_MODE_KEY = "sidebar_mode"
 DEFAULT_SIDEBAR_MODE = "fixed"
+LANGUAGE_KEY = "language"
 
 
 class AppSettingsUseCases:
@@ -43,6 +46,23 @@ class AppSettingsUseCases:
 
     def set_base_font_size(self, size: int) -> None:
         self._repository.set(FONT_SIZE_KEY, str(size))
+
+    def get_language(self) -> Optional[str]:
+        """Return the persisted language code, or None if the user has not
+        chosen one yet (first run). Callers resolve the first-run default from
+        the OS locale, since locale detection belongs to the presentation
+        layer (Qt), not here."""
+        raw = self._repository.get(LANGUAGE_KEY)
+        if raw is None:
+            return None
+        try:
+            return Language(raw).value
+        except ValueError:
+            return None
+
+    def set_language(self, language) -> None:
+        value = language.value if isinstance(language, Language) else language
+        self._repository.set(LANGUAGE_KEY, value)
 
     def get_sidebar_mode(self) -> str:
         raw = self._repository.get(SIDEBAR_MODE_KEY)

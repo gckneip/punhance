@@ -45,10 +45,10 @@ class DashboardReportUseCases:
         self._widget_repo.delete_by_dashboard_id(report_id)
         self._repo.delete(report_id)
 
-    def seed_default_if_empty(self) -> None:
+    def seed_default_if_empty(self, name: str = "Dashboard") -> None:
         if self._repo.find_all():
             return
-        self._repo.save(DashboardReport(id="default", name="Dashboard", sort_order=0))
+        self._repo.save(DashboardReport(id="default", name=name, sort_order=0))
 
     def _to_dto(self, entity: DashboardReport) -> DashboardReportDTO:
         return DashboardReportDTO(id=entity.id, name=entity.name, sort_order=entity.sort_order)

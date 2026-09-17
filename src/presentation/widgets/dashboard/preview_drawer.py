@@ -2,8 +2,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 from src.presentation import theme
-
-DEFAULT_PLACEHOLDER_TEXT = "Select options to preview this widget."
+from src.presentation.i18n import t
 
 
 class PreviewDrawer(QFrame):
@@ -21,17 +20,17 @@ class PreviewDrawer(QFrame):
         self._content = None
 
         layout = QVBoxLayout(self)
-        self._title_label = QLabel("Preview")
+        self._title_label = QLabel(t("chart.preview.title"))
         self._title_label.setStyleSheet(f"font-weight: 600; color: {theme.TEXT_SECONDARY};")
         layout.addWidget(self._title_label)
 
         self._body = QVBoxLayout()
         layout.addLayout(self._body, stretch=1)
 
-        self.show_placeholder(DEFAULT_PLACEHOLDER_TEXT)
+        self.show_placeholder(t("preview.placeholder"))
 
     def set_title(self, title: str):
-        self._title_label.setText(title or "Preview")
+        self._title_label.setText(title or t("chart.preview.title"))
 
     def show_placeholder(self, text: str):
         label = QLabel(text)

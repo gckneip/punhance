@@ -9,19 +9,39 @@ from src.domain.entities.financial_event import EventType
 from src.domain.entities.recurring_event import RecurrenceFrequency
 from src.presentation.widgets.account_credit_card_selector import AccountCreditCardSelector
 from src.presentation.widgets.currency_spin_box import CurrencySpinBox
+from src.presentation.i18n import t, CURRENCIES
+from src.presentation.labels import (
+    event_type_label, recurrence_frequency_label, account_type_label,
+)
 
 # All EventType values except "purchase" - a recurring-confirmed bare
 # FinancialEvent has no Purchase row, and main_window._edit_event special-cases
 # event_type == "purchase" to route to PurchaseDialog, which would then fail
 # to find one.
 TYPE_CHOICES = ["expense", "income", "transfer", "card_payment", "loan_payment", "investment", "refund"]
-CURRENCIES = ["BRL", "USD", "EUR", "GBP", "JPY", "ARS", "CAD", "AUD"]
 FREQUENCY_CHOICES = ["daily", "weekly", "monthly", "yearly"]
-WEEKDAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-MONTH_LABELS = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-]
+
+
+def weekday_labels():
+    """Localized Monday-first weekday names, resolved at call time."""
+    return [
+        t("recurring_dialog.weekday.mon"), t("recurring_dialog.weekday.tue"),
+        t("recurring_dialog.weekday.wed"), t("recurring_dialog.weekday.thu"),
+        t("recurring_dialog.weekday.fri"), t("recurring_dialog.weekday.sat"),
+        t("recurring_dialog.weekday.sun"),
+    ]
+
+
+def month_labels():
+    """Localized January-first month names, resolved at call time."""
+    return [
+        t("recurring_dialog.month.jan"), t("recurring_dialog.month.feb"),
+        t("recurring_dialog.month.mar"), t("recurring_dialog.month.apr"),
+        t("recurring_dialog.month.may"), t("recurring_dialog.month.jun"),
+        t("recurring_dialog.month.jul"), t("recurring_dialog.month.aug"),
+        t("recurring_dialog.month.sep"), t("recurring_dialog.month.oct"),
+        t("recurring_dialog.month.nov"), t("recurring_dialog.month.dec"),
+    ]
 
 
 class RecurringEventDialog(QDialog):
@@ -29,21 +49,25 @@ class RecurringEventDialog(QDialog):
         self, accounts, categories, counterparties, credit_cards, parent=None, recurring_event=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle("Edit Recurring Event" if recurring_event else "Create Recurring Event")
+        self.setWindowTitle(
+            t("recurring_dialog.title.edit") if recurring_event
+            else t("recurring_dialog.title.create")
+        )
         self.setModal(True)
         self.resize(420, 560)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
-        self.is_active_check = QCheckBox("Active")
+        self.is_active_check = QCheckBox(t("recurring_dialog.active"))
         self.is_active_check.setChecked(True)
         form.addRow(self.is_active_check)
 
         self.type_combo = QComboBox()
-        self.type_combo.addItems(TYPE_CHOICES)
-        self.type_combo.currentTextChanged.connect(self._on_type_changed)
-        form.addRow("Type:", self.type_combo)
+        for value in TYPE_CHOICES:
+            self.type_combo.addItem(event_type_label(value), value)
+        self.type_combo.currentIndexChanged.connect(self._on_type_changed)
+        form.addRow(f"{t('common.type')}:", self.type_combo)
 
         amount_row = QHBoxLayout()
         self.amount_spin = CurrencySpinBox(allow_negative=True)
@@ -53,38 +77,38 @@ class RecurringEventDialog(QDialog):
         self.currency_combo.addItems(CURRENCIES)
         self.currency_combo.setCurrentText("BRL")
         amount_row.addWidget(self.currency_combo)
-        form.addRow("Amount:", amount_row)
+        form.addRow(f"{t('common.amount')}:", amount_row)
 
         self.description_edit = QLineEdit()
-        form.addRow("Description:", self.description_edit)
+        form.addRow(f"{t('common.description')}:", self.description_edit)
 
         self.category_combo = QComboBox()
-        self.category_combo.addItem("None", None)
+        self.category_combo.addItem(t("common.none"), None)
         for cat in categories:
             self.category_combo.addItem(cat.name, cat.id)
-        form.addRow("Category:", self.category_combo)
+        form.addRow(f"{t('common.category')}:", self.category_combo)
 
         self.selector = AccountCreditCardSelector(accounts, credit_cards)
-        form.addRow("Account or Credit Card:", self.selector)
+        form.addRow(t("recurring_dialog.account_or_card"), self.selector)
         self._selector_label = form.labelForField(self.selector)
 
         self.dest_account_combo = QComboBox()
-        self.dest_account_combo.addItem("None", None)
+        self.dest_account_combo.addItem(t("common.none"), None)
         for acc in accounts:
-            self.dest_account_combo.addItem(f"{acc.name} ({acc.type})", acc.id)
+            self.dest_account_combo.addItem(f"{acc.name} ({account_type_label(acc.type)})", acc.id)
         self.dest_account_combo.setVisible(False)
-        self.dest_label = QLabel("Destination Account:")
+        self.dest_label = QLabel(t("recurring_dialog.destination_account"))
         self.dest_label.setVisible(False)
         form.addRow(self.dest_label, self.dest_account_combo)
 
         self.counterparty_combo = QComboBox()
-        self.counterparty_combo.addItem("None", None)
+        self.counterparty_combo.addItem(t("common.none"), None)
         for cp in counterparties:
             self.counterparty_combo.addItem(cp.name, cp.id)
-        form.addRow("Counterparty:", self.counterparty_combo)
+        form.addRow(t("recurring_dialog.counterparty"), self.counterparty_combo)
 
         self.notes_edit = QLineEdit()
-        form.addRow("Notes:", self.notes_edit)
+        form.addRow(t("recurring_dialog.notes"), self.notes_edit)
 
         layout.addLayout(form)
         layout.addWidget(self._build_recurrence_group())
@@ -97,23 +121,23 @@ class RecurringEventDialog(QDialog):
         if recurring_event is not None:
             self._load_recurring_event(recurring_event)
         else:
-            self._on_type_changed(self.type_combo.currentText())
+            self._on_type_changed()
 
     def _build_recurrence_group(self) -> QGroupBox:
-        group = QGroupBox("Recurrence")
+        group = QGroupBox(t("recurring_dialog.recurrence"))
         outer = QVBoxLayout(group)
         form = QFormLayout()
 
         self.frequency_combo = QComboBox()
         for value in FREQUENCY_CHOICES:
-            self.frequency_combo.addItem(value.capitalize(), value)
+            self.frequency_combo.addItem(recurrence_frequency_label(value), value)
         self.frequency_combo.currentIndexChanged.connect(self._on_frequency_changed)
-        form.addRow("Frequency:", self.frequency_combo)
+        form.addRow(t("recurring_dialog.frequency"), self.frequency_combo)
 
         self.interval_spin = QSpinBox()
         self.interval_spin.setRange(1, 365)
         self.interval_spin.setValue(1)
-        form.addRow("Every:", self.interval_spin)
+        form.addRow(t("recurring_dialog.every"), self.interval_spin)
 
         self.anchor_stack = QStackedWidget()
         self.anchor_stack.addWidget(QWidget())  # daily: no extra anchor field needed
@@ -121,9 +145,9 @@ class RecurringEventDialog(QDialog):
         weekly_panel = QWidget()
         weekly_form = QFormLayout(weekly_panel)
         self.weekday_combo = QComboBox()
-        for i, name in enumerate(WEEKDAY_LABELS):
+        for i, name in enumerate(weekday_labels()):
             self.weekday_combo.addItem(name, i)
-        weekly_form.addRow("Day of week:", self.weekday_combo)
+        weekly_form.addRow(t("recurring_dialog.day_of_week"), self.weekday_combo)
         self.anchor_stack.addWidget(weekly_panel)
 
         monthly_panel = QWidget()
@@ -131,19 +155,19 @@ class RecurringEventDialog(QDialog):
         self.day_of_month_spin = QSpinBox()
         self.day_of_month_spin.setRange(1, 31)
         self.day_of_month_spin.setValue(1)
-        monthly_form.addRow("Day of month:", self.day_of_month_spin)
+        monthly_form.addRow(t("recurring_dialog.day_of_month"), self.day_of_month_spin)
         self.anchor_stack.addWidget(monthly_panel)
 
         yearly_panel = QWidget()
         yearly_form = QFormLayout(yearly_panel)
         self.month_combo = QComboBox()
-        for i, name in enumerate(MONTH_LABELS, start=1):
+        for i, name in enumerate(month_labels(), start=1):
             self.month_combo.addItem(name, i)
-        yearly_form.addRow("Month:", self.month_combo)
+        yearly_form.addRow(t("recurring_dialog.month"), self.month_combo)
         self.yearly_day_spin = QSpinBox()
         self.yearly_day_spin.setRange(1, 31)
         self.yearly_day_spin.setValue(1)
-        yearly_form.addRow("Day:", self.yearly_day_spin)
+        yearly_form.addRow(t("recurring_dialog.day"), self.yearly_day_spin)
         self.anchor_stack.addWidget(yearly_panel)
 
         form.addRow(self.anchor_stack)
@@ -153,18 +177,18 @@ class RecurringEventDialog(QDialog):
         self.start_date_edit = QDateEdit()
         self.start_date_edit.setDate(QDate.currentDate())
         self.start_date_edit.setCalendarPopup(True)
-        date_form.addRow("Start date:", self.start_date_edit)
+        date_form.addRow(t("recurring_dialog.start_date"), self.start_date_edit)
 
         self.end_date_edit = QDateEdit()
         self.end_date_edit.setDate(QDate.currentDate())
         self.end_date_edit.setCalendarPopup(True)
         self.end_date_edit.setEnabled(False)
 
-        self.no_end_check = QCheckBox("No end date")
+        self.no_end_check = QCheckBox(t("recurring_dialog.no_end_date"))
         self.no_end_check.setChecked(True)
         self.no_end_check.toggled.connect(lambda checked: self.end_date_edit.setEnabled(not checked))
         date_form.addRow(self.no_end_check)
-        date_form.addRow("End date:", self.end_date_edit)
+        date_form.addRow(t("recurring_dialog.end_date"), self.end_date_edit)
 
         outer.addLayout(date_form)
         return group
@@ -173,29 +197,30 @@ class RecurringEventDialog(QDialog):
         # Stack page order (daily/weekly/monthly/yearly) matches FREQUENCY_CHOICES order.
         self.anchor_stack.setCurrentIndex(index)
 
-    def _on_type_changed(self, text: str):
-        is_transfer = (text == "transfer")
-        is_card_payment = (text == "card_payment")
+    def _on_type_changed(self, *_):
+        current = self.type_combo.currentData()
+        is_transfer = (current == "transfer")
+        is_card_payment = (current == "card_payment")
         self.dest_account_combo.setVisible(is_transfer)
         self.dest_label.setVisible(is_transfer)
         if is_transfer:
             mode = AccountCreditCardSelector.MODE_ACCOUNT_ONLY
-            label = "Account (Source):"
+            label = t("recurring_dialog.account_source")
         elif is_card_payment:
             mode = AccountCreditCardSelector.MODE_BOTH
-            label = "Account & Credit Card:"
+            label = t("recurring_dialog.account_and_card")
         else:
             mode = AccountCreditCardSelector.MODE_EITHER
-            label = "Account or Credit Card:"
+            label = t("recurring_dialog.account_or_card")
         self.selector.set_mode(mode)
         self._selector_label.setText(label)
 
     def _load_recurring_event(self, r):
         self.is_active_check.setChecked(r.is_active)
-        index = self.type_combo.findText(r.event_type)
+        index = self.type_combo.findData(r.event_type)
         if index >= 0:
             self.type_combo.setCurrentIndex(index)
-        self._on_type_changed(self.type_combo.currentText())
+        self._on_type_changed()
         self.amount_spin.setValue(r.amount)
         self.currency_combo.setCurrentText(r.currency)
         self.description_edit.setText(r.description)
@@ -234,24 +259,24 @@ class RecurringEventDialog(QDialog):
 
     def _validate_and_accept(self):
         if not self.description_edit.text().strip():
-            QMessageBox.warning(self, "Validation", "Description is required.")
+            QMessageBox.warning(self, t("recurring_dialog.validation.title"), t("recurring_dialog.validation.description_required"))
             return
         if self.amount_spin.value() == 0:
-            QMessageBox.warning(self, "Validation", "Amount cannot be zero.")
+            QMessageBox.warning(self, t("recurring_dialog.validation.title"), t("recurring_dialog.validation.amount_zero"))
             return
         selector_error = self.selector.validation_error()
         if selector_error:
-            QMessageBox.warning(self, "Validation", selector_error)
+            QMessageBox.warning(self, t("recurring_dialog.validation.title"), selector_error)
             return
-        if self.type_combo.currentText() == "transfer":
+        if self.type_combo.currentData() == "transfer":
             if self.dest_account_combo.currentData() is None:
-                QMessageBox.warning(self, "Validation", "Destination account is required for transfers.")
+                QMessageBox.warning(self, t("recurring_dialog.validation.title"), t("recurring_dialog.validation.dest_required"))
                 return
             if self.dest_account_combo.currentData() == self.selector.account_id():
-                QMessageBox.warning(self, "Validation", "Source and destination accounts must differ.")
+                QMessageBox.warning(self, t("recurring_dialog.validation.title"), t("recurring_dialog.validation.accounts_differ"))
                 return
         if not self.no_end_check.isChecked() and self.end_date_edit.date() < self.start_date_edit.date():
-            QMessageBox.warning(self, "Validation", "End date must be on or after the start date.")
+            QMessageBox.warning(self, t("recurring_dialog.validation.title"), t("recurring_dialog.validation.end_after_start"))
             return
         self.accept()
 
@@ -269,7 +294,7 @@ class RecurringEventDialog(QDialog):
             day_of_month = self.yearly_day_spin.value()
 
         return {
-            "event_type": EventType(self.type_combo.currentText()),
+            "event_type": EventType(self.type_combo.currentData()),
             "description": self.description_edit.text().strip(),
             "amount": self.amount_spin.value(),
             "frequency": RecurrenceFrequency(frequency_value),

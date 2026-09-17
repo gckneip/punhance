@@ -8,9 +8,12 @@ from PySide6.QtWidgets import (
 
 from src.domain.services.chart_data_service import ChartDataService, DateRangeSpec
 from src.presentation import icons
+from src.presentation.i18n import locale_date_display_format, t
 
 # (label, spec dict) - spec is None for the "Custom Range..." sentinel, which
 # reveals the two QDateEdit pickers instead of resolving to a fixed dict.
+# The label is the stable internal identity (used for default_label matching by
+# callers); the on-screen text is translated via _PRESET_LABEL_KEYS at runtime.
 PRESETS = [
     ("Last Month", {"mode": "rolling", "unit": "months", "amount": 1}),
     ("Last 3 Months", {"mode": "rolling", "unit": "months", "amount": 3}),
@@ -21,6 +24,24 @@ PRESETS = [
     ("All Time", {"mode": "fixed", "date_from": None, "date_to": None}),
     ("Custom Range...", None),
 ]
+
+# Stable internal label -> translation key.
+_PRESET_LABEL_KEYS = {
+    "Last Month": "date_range.last_month",
+    "Last 3 Months": "date_range.last_3_months",
+    "Last 6 Months": "date_range.last_6_months",
+    "This Month": "date_range.this_month",
+    "This Year": "date_range.this_year",
+    "Last Year": "date_range.last_year",
+    "All Time": "date_range.all_time",
+    "Custom Range...": "date_range.custom_range",
+}
+
+
+def _preset_display(index: int) -> str:
+    """Localized display text for the preset at ``index``."""
+    return t(_PRESET_LABEL_KEYS[PRESETS[index][0]])
+
 
 _CUSTOM_INDEX = len(PRESETS) - 1
 
@@ -67,31 +88,31 @@ class DateRangeSelector(QWidget):
         if compact:
             self._button = QToolButton()
             self._button.setIcon(icons.icon("fa6s.calendar-days"))
-            self._button.setToolTip(PRESETS[self._current_index][0])
+            self._button.setToolTip(_preset_display(self._current_index))
             self._button.setFixedSize(24, 24)
             self._button.setPopupMode(QToolButton.InstantPopup)
             menu = QMenu(self._button)
             for index, (label, _) in enumerate(PRESETS):
-                action = menu.addAction(label)
+                action = menu.addAction(_preset_display(index))
                 action.triggered.connect(lambda _checked=False, i=index: self._select_index(i))
             self._button.setMenu(menu)
             layout.addWidget(self._button)
         else:
             self._combo = QComboBox()
-            self._combo.addItems([label for label, _ in PRESETS])
+            self._combo.addItems([_preset_display(i) for i in range(len(PRESETS))])
             self._combo.setMaximumWidth(150)
             self._combo.setCurrentIndex(self._current_index)
             self._combo.currentIndexChanged.connect(self._select_index)
             layout.addWidget(self._combo)
 
         self._from_edit = QDateEdit(calendarPopup=True)
-        self._from_edit.setDisplayFormat("yyyy-MM-dd")
+        self._from_edit.setDisplayFormat(locale_date_display_format())
         self._from_edit.setDate(QDate.currentDate().addMonths(-3))
         self._from_edit.setMaximumWidth(110)
         layout.addWidget(self._from_edit)
 
         self._to_edit = QDateEdit(calendarPopup=True)
-        self._to_edit.setDisplayFormat("yyyy-MM-dd")
+        self._to_edit.setDisplayFormat(locale_date_display_format())
         self._to_edit.setDate(QDate.currentDate())
         self._to_edit.setMaximumWidth(110)
         layout.addWidget(self._to_edit)
@@ -112,7 +133,7 @@ class DateRangeSelector(QWidget):
     def _select_index(self, index: int):
         self._current_index = index
         if self._button is not None:
-            self._button.setToolTip(PRESETS[index][0])
+            self._button.setToolTip(_preset_display(index))
         self._update_custom_visibility()
         self.range_changed.emit(self.date_range_dict())
 
@@ -175,4 +196,4 @@ class DateRangeSelector(QWidget):
             self._combo.setCurrentIndex(index)
             self._combo.blockSignals(False)
         if self._button is not None:
-            self._button.setToolTip(PRESETS[index][0])
+            self._button.setToolTip(_preset_display(index))

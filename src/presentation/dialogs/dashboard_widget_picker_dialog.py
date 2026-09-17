@@ -9,10 +9,9 @@ from src.application.dashboard_presets import (
 )
 from src.application.dto.dashboard_widget_template_dto import CreateDashboardWidgetTemplateDTO
 from src.presentation.dialogs.custom_chart_builder_dialog import CustomChartBuilderDialog
+from src.presentation.i18n import t
 from src.presentation.widgets.dashboard.generic_widget_renderer import build_generic_content
 from src.presentation.widgets.dashboard.preview_drawer import PreviewDrawer
-
-PREVIEW_PLACEHOLDER_TEXT = "Hover over a widget to preview it here."
 
 
 class DashboardWidgetPickerDialog(QDialog):
@@ -21,7 +20,7 @@ class DashboardWidgetPickerDialog(QDialog):
         credit_cards=None, chart_data_service=None, dashboard_widget_template_use_cases=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle("Add Widget")
+        self.setWindowTitle(t("widget_picker.title"))
         self.setModal(True)
         self.resize(760, 480)
 
@@ -37,11 +36,11 @@ class DashboardWidgetPickerDialog(QDialog):
 
         content_row = QHBoxLayout()
         tabs = QTabWidget()
-        tabs.addTab(self._build_premade_tab(), "Premade")
-        tabs.addTab(self._build_custom_tab(), "Custom")
+        tabs.addTab(self._build_premade_tab(), t("widget_picker.tab.premade"))
+        tabs.addTab(self._build_custom_tab(), t("widget_picker.tab.custom"))
         content_row.addWidget(tabs, stretch=1)
         self._preview = PreviewDrawer()
-        self._preview.show_placeholder(PREVIEW_PLACEHOLDER_TEXT)
+        self._preview.show_placeholder(t("widget_picker.preview_hint"))
         content_row.addWidget(self._preview)
         outer.addLayout(content_row)
 
@@ -59,7 +58,7 @@ class DashboardWidgetPickerDialog(QDialog):
         self._preset_list = QListWidget()
         self._preset_list.setMouseTracking(True)
         for preset in DEFAULT_PRESETS:
-            item = QListWidgetItem(preset.title)
+            item = QListWidgetItem(t(preset.display_title_key))
             item.setData(Qt.UserRole, preset.preset_id)
             self._preset_list.addItem(item)
         self._preset_list.itemEntered.connect(lambda item: self._show_preset_preview(item.data(Qt.UserRole)))
@@ -68,7 +67,7 @@ class DashboardWidgetPickerDialog(QDialog):
         )
         layout.addWidget(self._preset_list)
 
-        add_btn = QPushButton("Add Selected")
+        add_btn = QPushButton(t("widget_picker.add_selected"))
         add_btn.setObjectName("primaryButton")
         add_btn.clicked.connect(self._on_add_preset)
         layout.addWidget(add_btn)
@@ -78,7 +77,7 @@ class DashboardWidgetPickerDialog(QDialog):
         panel = QWidget()
         layout = QVBoxLayout(panel)
 
-        layout.addWidget(QLabel("Your saved custom widgets:"))
+        layout.addWidget(QLabel(t("widget_picker.saved_label")))
         self._template_list = QListWidget()
         self._template_list.setMouseTracking(True)
         self._reload_templates()
@@ -89,17 +88,17 @@ class DashboardWidgetPickerDialog(QDialog):
         layout.addWidget(self._template_list)
 
         template_btn_row = QHBoxLayout()
-        add_template_btn = QPushButton("Add Selected")
+        add_template_btn = QPushButton(t("widget_picker.add_selected"))
         add_template_btn.setObjectName("primaryButton")
         add_template_btn.clicked.connect(self._on_add_template)
         template_btn_row.addWidget(add_template_btn)
-        delete_template_btn = QPushButton("Delete Selected")
+        delete_template_btn = QPushButton(t("common.delete_selected"))
         delete_template_btn.clicked.connect(self._on_delete_template)
         template_btn_row.addWidget(delete_template_btn)
         layout.addLayout(template_btn_row)
 
-        layout.addWidget(QLabel("Build a widget from your own metrics, filters, and date range."))
-        create_btn = QPushButton("Create Custom Widget...")
+        layout.addWidget(QLabel(t("widget_picker.build_hint")))
+        create_btn = QPushButton(t("widget_picker.create_custom"))
         create_btn.setObjectName("primaryButton")
         create_btn.clicked.connect(self._on_create_custom)
         layout.addWidget(create_btn)
@@ -118,40 +117,40 @@ class DashboardWidgetPickerDialog(QDialog):
     def _show_preset_preview(self, preset_id):
         preset = find_preset(preset_id) if preset_id else None
         if preset is None:
-            self._preview.set_title("Preview")
-            self._preview.show_placeholder(PREVIEW_PLACEHOLDER_TEXT)
+            self._preview.set_title(t("chart.preview.title"))
+            self._preview.show_placeholder(t("widget_picker.preview_hint"))
             return
 
-        self._preview.set_title(preset.title)
+        self._preview.set_title(t(preset.display_title_key))
         if self._chart_data_service is None:
-            self._preview.show_placeholder(PREVIEW_PLACEHOLDER_TEXT)
+            self._preview.show_placeholder(t("widget_picker.preview_hint"))
             return
 
         is_stat = preset.config.get("chart_type") == "stat"
         try:
-            content = build_generic_content(preset.title, clone_preset_config(preset), self._chart_data_service)
+            content = build_generic_content(t(preset.display_title_key), clone_preset_config(preset), self._chart_data_service)
         except Exception:
-            self._preview.show_placeholder("Couldn't render a preview for this widget.")
+            self._preview.show_placeholder(t("widget_picker.preview_error"))
             return
         self._preview.show_content(content, center=is_stat)
 
     def _show_template_preview(self, template_id):
         template = self._find_template(template_id) if template_id else None
         if template is None:
-            self._preview.set_title("Preview")
-            self._preview.show_placeholder(PREVIEW_PLACEHOLDER_TEXT)
+            self._preview.set_title(t("chart.preview.title"))
+            self._preview.show_placeholder(t("widget_picker.preview_hint"))
             return
 
         self._preview.set_title(template.title)
         if self._chart_data_service is None:
-            self._preview.show_placeholder(PREVIEW_PLACEHOLDER_TEXT)
+            self._preview.show_placeholder(t("widget_picker.preview_hint"))
             return
 
         is_stat = template.config.get("chart_type") == "stat"
         try:
             content = build_generic_content(template.title, dict(template.config), self._chart_data_service)
         except Exception:
-            self._preview.show_placeholder("Couldn't render a preview for this widget.")
+            self._preview.show_placeholder(t("widget_picker.preview_error"))
             return
         self._preview.show_content(content, center=is_stat)
 
@@ -183,7 +182,8 @@ class DashboardWidgetPickerDialog(QDialog):
         if item is None or self._template_use_cases is None:
             return
         reply = QMessageBox.question(
-            self, "Delete Saved Widget", f'Delete "{item.text()}" from your saved custom widgets?',
+            self, t("widget_picker.delete.title"),
+            t("widget_picker.delete.body", name=item.text()),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
@@ -197,9 +197,13 @@ class DashboardWidgetPickerDialog(QDialog):
             return
         preset_id = item.data(Qt.UserRole)
         preset = next(p for p in DEFAULT_PRESETS if p.preset_id == preset_id)
+        # Store the localized title for display, plus title_key in the config so
+        # the widget re-localizes on a later language switch (localize_default_title).
+        config = clone_preset_config(preset)
+        config["title_key"] = preset.display_title_key
         self._result = {
-            "title": preset.title,
-            "config": clone_preset_config(preset),
+            "title": t(preset.display_title_key),
+            "config": config,
             "row_span": preset.default_row_span,
             "col_span": preset.default_col_span,
             "source_preset_id": preset.preset_id,

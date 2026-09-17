@@ -290,6 +290,18 @@ class PurchaseUseCases:
                 counts[item.product_id] = counts.get(item.product_id, 0) + 1
         return {product_id: sums[product_id] / counts[product_id] for product_id in sums}
 
+    def get_lowest_price_counterparty_by_product(self) -> Dict[str, tuple]:
+        best_price: Dict[str, float] = {}
+        best_counterparty: Dict[str, Optional[str]] = {}
+        for product_id, unit_price, counterparty_id in self._purchase_repo.find_product_prices_with_counterparty():
+            if product_id not in best_price or unit_price < best_price[product_id]:
+                best_price[product_id] = unit_price
+                best_counterparty[product_id] = counterparty_id
+        return {
+            product_id: (best_counterparty[product_id], best_price[product_id])
+            for product_id in best_price
+        }
+
     def get_recent_events_for_product(self, product_id: str, limit: int = 20) -> List[ProductEventDTO]:
         items = self._purchase_repo.find_items_by_product(product_id, limit=limit)
         result = []

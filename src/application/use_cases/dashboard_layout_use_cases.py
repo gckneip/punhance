@@ -57,9 +57,25 @@ class DashboardLayoutUseCases:
     def delete_widget(self, widget_id: str) -> None:
         self._repo.delete(widget_id)
 
-    def seed_default_layout_if_empty(self, dashboard_id: str = "default") -> None:
+    def seed_default_layout_if_empty(self, dashboard_id: str = "default", titles: dict = None) -> None:
         if self._repo.find_all(dashboard_id):
             return
+
+        # Default widget titles are English; the presentation layer may pass a
+        # `titles` map (keyed as below) with localized strings for fresh
+        # installs. Existing layouts are never re-seeded, so they keep whatever
+        # language they were first created in.
+        labels = {
+            "quick_add": "Quick Add",
+            "monthly_income": "Monthly Income",
+            "monthly_expenses": "Monthly Expenses",
+            "monthly_net": "Monthly Net",
+            "savings_rate": "Savings Rate",
+            "recent_events": "Recent Events",
+            "future_transactions": "Future Transactions",
+        }
+        if titles:
+            labels.update({k: v for k, v in titles.items() if v})
 
         def stat(title, metric, sort_order):
             return DashboardWidget(
@@ -83,7 +99,7 @@ class DashboardLayoutUseCases:
         default_widgets = [
             DashboardWidget(
                 kind=DashboardWidgetKind.BUILTIN,
-                title="Quick Add",
+                title=labels["quick_add"],
                 grid_row=0,
                 grid_col=0,
                 grid_row_span=1,
@@ -92,12 +108,12 @@ class DashboardLayoutUseCases:
                 config={"builtin_key": "quick_add_bar"},
                 dashboard_id=dashboard_id,
             ),
-            stat("Monthly Income", "income", 0),
-            stat("Monthly Expenses", "expenses", 1),
-            stat("Monthly Net", "net", 2),
+            stat(labels["monthly_income"], "income", 0),
+            stat(labels["monthly_expenses"], "expenses", 1),
+            stat(labels["monthly_net"], "net", 2),
             DashboardWidget(
                 kind=DashboardWidgetKind.BUILTIN,
-                title="Savings Rate",
+                title=labels["savings_rate"],
                 grid_row=1,
                 grid_col=9,
                 grid_row_span=1,
@@ -108,7 +124,7 @@ class DashboardLayoutUseCases:
             ),
             DashboardWidget(
                 kind=DashboardWidgetKind.BUILTIN,
-                title="Recent Events",
+                title=labels["recent_events"],
                 grid_row=2,
                 grid_col=0,
                 grid_row_span=3,
@@ -119,7 +135,7 @@ class DashboardLayoutUseCases:
             ),
             DashboardWidget(
                 kind=DashboardWidgetKind.BUILTIN,
-                title="Future Transactions",
+                title=labels["future_transactions"],
                 grid_row=5,
                 grid_col=0,
                 grid_row_span=3,

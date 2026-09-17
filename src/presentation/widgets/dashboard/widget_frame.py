@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.presentation import icons, theme
+from src.presentation.i18n import t
 from src.presentation.widgets.date_range_selector import DateRangeSelector
 from src.presentation.widgets.dashboard.period_ahead_selector import PeriodAheadSelector
 
@@ -26,7 +27,7 @@ class _DragHandle(QLabel):
         self._frame = frame
         self.setPixmap(icons.icon("fa6s.grip-vertical", color=theme.TEXT_SECONDARY).pixmap(14, 14))
         self.setCursor(Qt.OpenHandCursor)
-        self.setToolTip("Drag to move this widget - drop on empty space to move, or onto another widget to swap")
+        self.setToolTip(t("widget_frame.drag_move"))
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -47,7 +48,7 @@ class _ResizeHandle(QWidget):
         self._frame = frame
         self.setFixedSize(14, 14)
         self.setCursor(Qt.SizeFDiagCursor)
-        self.setToolTip("Drag to resize")
+        self.setToolTip(t("widget_frame.drag_resize"))
         self._dragging = False
         self._start_pos = None
         self._start_row_span = 1
@@ -96,7 +97,7 @@ class _DeleteButton(QPushButton):
     def __init__(self, frame: "WidgetFrame"):
         super().__init__(frame)
         self.setIcon(icons.icon("fa6s.xmark", color=theme.EXPENSE))
-        self.setToolTip("Delete widget")
+        self.setToolTip(t("widget_frame.delete"))
         self.setFixedSize(24, 24)
         self.setCursor(Qt.PointingHandCursor)
         self.setStyleSheet(

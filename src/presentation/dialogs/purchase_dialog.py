@@ -21,6 +21,8 @@ from src.presentation.dialogs.counterparty_dialog import CounterpartyDialog
 from src.presentation.dialogs.product_dialog import ProductDialog
 from src.presentation.widgets.account_credit_card_selector import AccountCreditCardSelector
 from src.presentation.widgets.currency_spin_box import CurrencySpinBox
+from src.presentation.i18n import t, format_currency, format_date, CURRENCY_SYMBOLS
+from src.presentation.labels import payment_method_label
 
 
 def _add_one_month(d: date) -> date:
@@ -57,11 +59,11 @@ class PurchaseDialog(QDialog):
         self._installment_service = InstallmentService()
 
         if duplicate:
-            self.setWindowTitle("Duplicate Purchase")
+            self.setWindowTitle(t("purchase_dialog.title.duplicate"))
         elif purchase_data:
-            self.setWindowTitle("Edit Purchase")
+            self.setWindowTitle(t("purchase_dialog.title.edit"))
         else:
-            self.setWindowTitle("Create Purchase")
+            self.setWindowTitle(t("purchase_dialog.title.create"))
         self.setModal(True)
 
         layout = QVBoxLayout(self)
@@ -79,27 +81,28 @@ class PurchaseDialog(QDialog):
         self.date_edit = QDateEdit()
         self.date_edit.setDate(QDate.currentDate())
         self.date_edit.setCalendarPopup(True)
-        form.addRow("Date:", self.date_edit)
+        form.addRow(f"{t('common.date')}:", self.date_edit)
 
         self.description_edit = QLineEdit()
-        form.addRow("Description:", self.description_edit)
+        form.addRow(f"{t('common.description')}:", self.description_edit)
 
         self.total_spin = CurrencySpinBox()
         self.total_spin.setRange(0.01, 999999)
-        self.total_spin.setPrefix("R$ ")
-        form.addRow("Total Amount:", self.total_spin)
+        self.total_spin.setPrefix(CURRENCY_SYMBOLS["BRL"] + " ")
+        form.addRow(t("purchase_dialog.total_amount"), self.total_spin)
 
         self.payment_combo = QComboBox()
-        self.payment_combo.addItems(["credit_card", "debit_card", "cash", "pix", "bank_transfer"])
-        self.payment_combo.currentTextChanged.connect(self._on_payment_changed)
-        form.addRow("Payment Method:", self.payment_combo)
+        for value in ["credit_card", "debit_card", "cash", "pix", "bank_transfer"]:
+            self.payment_combo.addItem(payment_method_label(value), value)
+        self.payment_combo.currentIndexChanged.connect(self._on_payment_changed)
+        form.addRow(t("purchase_dialog.payment_method"), self.payment_combo)
 
         self.selector = AccountCreditCardSelector(accounts, credit_cards)
-        form.addRow("Account or Credit Card:", self.selector)
+        form.addRow(t("purchase_dialog.account_or_card"), self.selector)
         self._selector_label = form.labelForField(self.selector)
-        self._on_payment_changed(self.payment_combo.currentText())
+        self._on_payment_changed()
 
-        self.installments_check = QCheckBox("Has installments")
+        self.installments_check = QCheckBox(t("purchase_dialog.has_installments"))
         self.installments_check.toggled.connect(self._on_installments_toggled)
         form.addRow(self.installments_check)
 
@@ -109,7 +112,7 @@ class PurchaseDialog(QDialog):
         self.installments_spin.valueChanged.connect(self._update_installment_preview)
 
         self.counterparty_combo = QComboBox()
-        self.counterparty_combo.addItem("None", None)
+        self.counterparty_combo.addItem(t("common.none"), None)
         for cp in counterparties:
             self.counterparty_combo.addItem(cp.name, cp.id)
 
@@ -120,22 +123,22 @@ class PurchaseDialog(QDialog):
         self._btn_add_counterparty = QPushButton()
         self._btn_add_counterparty.setIcon(icons.icon("fa6s.circle-plus"))
         self._btn_add_counterparty.setFixedWidth(36)
-        self._btn_add_counterparty.setToolTip("New counterparty")
+        self._btn_add_counterparty.setToolTip(t("purchase_dialog.new_counterparty"))
         self._btn_add_counterparty.clicked.connect(self._add_counterparty)
         counterparty_row_layout.addWidget(self._btn_add_counterparty)
-        form.addRow("Counterparty:", counterparty_row)
+        form.addRow(t("purchase_dialog.counterparty"), counterparty_row)
 
         self.notes_edit = QTextEdit()
         self.notes_edit.setMaximumHeight(60)
-        form.addRow("Notes:", self.notes_edit)
+        form.addRow(t("purchase_dialog.notes"), self.notes_edit)
 
-        self.has_items_check = QCheckBox("Has items")
+        self.has_items_check = QCheckBox(t("purchase_dialog.has_items"))
         self.has_items_check.toggled.connect(self._on_has_items_toggled)
         form.addRow(self.has_items_check)
 
-        self.category_label = QLabel("Category:")
+        self.category_label = QLabel(f"{t('common.category')}:")
         self.category_combo = QComboBox()
-        self.category_combo.addItem("None", None)
+        self.category_combo.addItem(t("common.none"), None)
         for cat in categories:
             self.category_combo.addItem(cat.name, cat.id)
         form.addRow(self.category_label, self.category_combo)
@@ -143,14 +146,19 @@ class PurchaseDialog(QDialog):
         left_column = QVBoxLayout()
         left_column.addLayout(form)
 
-        self.items_label = QLabel("Items:")
+        self.items_label = QLabel(t("purchase_dialog.items"))
         self.items_label.setStyleSheet("font-weight: bold; margin-top: 8px;")
         left_column.addWidget(self.items_label)
 
         self.items_table = QTableWidget()
         self.items_table.setColumnCount(7)
         self.items_table.setHorizontalHeaderLabels(
-            ["Product", "Name", "Qty", "Unit", "Unit Price", "Total", "Category"]
+            [
+                t("purchase_dialog.item.product"), t("purchase_dialog.item.name"),
+                t("purchase_dialog.item.qty"), t("purchase_dialog.item.unit"),
+                t("purchase_dialog.item.unit_price"), t("purchase_dialog.item.total"),
+                t("common.category"),
+            ]
         )
         self.items_table.horizontalHeader().setStretchLastSection(True)
         self.items_table.setAlternatingRowColors(True)
@@ -170,7 +178,7 @@ class PurchaseDialog(QDialog):
         self.items_btn_row = QWidget()
         btn_row = QHBoxLayout(self.items_btn_row)
         btn_row.setContentsMargins(0, 0, 0, 0)
-        self._btn_add_item = QPushButton("+ Add Item")
+        self._btn_add_item = QPushButton(t("purchase_dialog.add_item"))
         # clicked emits a `checked` bool; swallow it so it doesn't land in
         # _add_item_row's first positional param (`name`).
         self._btn_add_item.clicked.connect(lambda: self._add_item_row())
@@ -189,27 +197,27 @@ class PurchaseDialog(QDialog):
         drawer_layout = QVBoxLayout(self.installments_drawer)
         drawer_layout.setContentsMargins(12, 0, 0, 0)
 
-        drawer_title = QLabel("Installments")
+        drawer_title = QLabel(t("purchase_dialog.installments"))
         drawer_title.setStyleSheet("font-weight: bold; margin-top: 8px;")
         drawer_layout.addWidget(drawer_title)
 
         drawer_form = QFormLayout()
-        drawer_form.addRow("Installment Count:", self.installments_spin)
+        drawer_form.addRow(t("purchase_dialog.installment_count"), self.installments_spin)
 
         self.remainder_combo = QComboBox()
-        self.remainder_combo.addItem("Last installment", False)
-        self.remainder_combo.addItem("First installment", True)
+        self.remainder_combo.addItem(t("purchase_dialog.remainder.last"), False)
+        self.remainder_combo.addItem(t("purchase_dialog.remainder.first"), True)
         self.remainder_combo.currentIndexChanged.connect(self._update_installment_preview)
-        drawer_form.addRow("Remainder On:", self.remainder_combo)
+        drawer_form.addRow(t("purchase_dialog.remainder_on"), self.remainder_combo)
 
         drawer_layout.addLayout(drawer_form)
 
-        preview_label = QLabel("Preview:")
+        preview_label = QLabel(t("purchase_dialog.preview"))
         drawer_layout.addWidget(preview_label)
 
         self.installments_preview = QTableWidget()
         self.installments_preview.setColumnCount(2)
-        self.installments_preview.setHorizontalHeaderLabels(["Due Date", "Amount"])
+        self.installments_preview.setHorizontalHeaderLabels([t("purchase_dialog.due_date"), t("common.amount")])
         self.installments_preview.horizontalHeader().setStretchLastSection(True)
         self.installments_preview.setAlternatingRowColors(True)
         self.installments_preview.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -252,13 +260,15 @@ class PurchaseDialog(QDialog):
         if self.items_table.rowCount():
             self._sync_item_table_layout()
 
-    def _on_payment_changed(self, method: str):
-        is_card = method == "credit_card"
+    def _on_payment_changed(self, *_):
+        is_card = self.payment_combo.currentData() == "credit_card"
         self.selector.set_mode(
             AccountCreditCardSelector.MODE_CARD_ONLY if is_card
             else AccountCreditCardSelector.MODE_ACCOUNT_ONLY
         )
-        self._selector_label.setText("Credit Card:" if is_card else "Account:")
+        self._selector_label.setText(
+            t("purchase_dialog.credit_card") if is_card else f"{t('common.account')}:"
+        )
 
     def _on_installments_toggled(self, checked: bool):
         self.installments_drawer.setVisible(checked)
@@ -281,8 +291,8 @@ class PurchaseDialog(QDialog):
         installments = self._installment_service.create_installments(plan, first_due_date)
         self.installments_preview.setRowCount(len(installments))
         for row, installment in enumerate(installments):
-            self.installments_preview.setItem(row, 0, QTableWidgetItem(installment.due_date.isoformat()))
-            self.installments_preview.setItem(row, 1, QTableWidgetItem(f"R$ {installment.amount:.2f}"))
+            self.installments_preview.setItem(row, 0, QTableWidgetItem(format_date(installment.due_date)))
+            self.installments_preview.setItem(row, 1, QTableWidgetItem(format_currency(installment.amount, "BRL")))
         self.installments_preview.resizeColumnsToContents()
 
     def _on_has_items_toggled(self, checked: bool):
@@ -298,7 +308,7 @@ class PurchaseDialog(QDialog):
         self.description_edit.setText(purchase.description or "")
         self.total_spin.setValue(purchase.total_amount)
 
-        payment_index = self.payment_combo.findText(purchase.payment_method)
+        payment_index = self.payment_combo.findData(purchase.payment_method)
         if payment_index >= 0:
             self.payment_combo.setCurrentIndex(payment_index)
 
@@ -377,7 +387,7 @@ class PurchaseDialog(QDialog):
         add_product_btn = QPushButton()
         add_product_btn.setIcon(icons.icon("fa6s.circle-plus"))
         add_product_btn.setFixedWidth(36)
-        add_product_btn.setToolTip("New product")
+        add_product_btn.setToolTip(t("purchase_dialog.new_product"))
         add_product_btn.clicked.connect(lambda _checked=False, combo=product_combo: self._add_product(combo))
         product_row_layout.addWidget(add_product_btn)
         product_container.product_combo = product_combo
@@ -386,7 +396,7 @@ class PurchaseDialog(QDialog):
 
         name_edit = QLineEdit()
         name_edit.setText(name)
-        name_edit.setPlaceholderText("e.g. Girando Sol 3L")
+        name_edit.setPlaceholderText(t("purchase_dialog.item.name_placeholder"))
         self.items_table.setCellWidget(row, 1, name_edit)
 
         qty_spin = QDoubleSpinBox()
@@ -402,13 +412,13 @@ class PurchaseDialog(QDialog):
 
         price_spin = CurrencySpinBox()
         price_spin.setRange(0, 999999)
-        price_spin.setPrefix("R$ ")
+        price_spin.setPrefix(CURRENCY_SYMBOLS["BRL"] + " ")
         price_spin.setValue(unit_price)
         self.items_table.setCellWidget(row, 4, price_spin)
 
         total_spin = CurrencySpinBox()
         total_spin.setRange(0, 999999)
-        total_spin.setPrefix("R$ ")
+        total_spin.setPrefix(CURRENCY_SYMBOLS["BRL"] + " ")
         total_spin.setValue(total)
         self.items_table.setCellWidget(row, 5, total_spin)
 
@@ -418,7 +428,7 @@ class PurchaseDialog(QDialog):
         price_spin.valueChanged.connect(_recalc_total)
 
         cat_combo = QComboBox()
-        cat_combo.addItem("None", None)
+        cat_combo.addItem(t("common.none"), None)
         for c in self._categories:
             cat_combo.addItem(c.name, c.id)
         if cat_id:
@@ -499,18 +509,20 @@ class PurchaseDialog(QDialog):
 
     def _validate_and_accept(self):
         if not self.description_edit.text().strip():
-            QMessageBox.warning(self, "Validation", "Description is required.")
+            QMessageBox.warning(self, t("purchase_dialog.validation.title"), t("purchase_dialog.validation.description_required"))
             return
         selector_error = self.selector.validation_error()
         if selector_error:
-            QMessageBox.warning(self, "Validation", selector_error)
+            QMessageBox.warning(self, t("purchase_dialog.validation.title"), selector_error)
             return
         if self.has_items_check.isChecked():
             for row in range(self.items_table.rowCount()):
                 product_combo = self.items_table.cellWidget(row, 0).product_combo
                 if product_combo.currentData() is None:
                     QMessageBox.warning(
-                        self, "Validation", f"Item {row + 1} is missing a product."
+                        self,
+                        t("purchase_dialog.validation.title"),
+                        t("purchase_dialog.validation.item_missing_product", number=row + 1),
                     )
                     return
             items_total = round(sum(
@@ -521,9 +533,12 @@ class PurchaseDialog(QDialog):
             if abs(items_total - total) > 0.01:
                 QMessageBox.warning(
                     self,
-                    "Validation",
-                    f"The items total (R$ {items_total:.2f}) must match the purchase "
-                    f"total (R$ {total:.2f}).",
+                    t("purchase_dialog.validation.title"),
+                    t(
+                        "purchase_dialog.validation.items_total_mismatch",
+                        items_total=format_currency(items_total, "BRL"),
+                        total=format_currency(total, "BRL"),
+                    ),
                 )
                 return
         self.accept()
@@ -554,7 +569,7 @@ class PurchaseDialog(QDialog):
             "event_date": self.date_edit.date().toPython(),
             "description": self.description_edit.text().strip(),
             "total_amount": self.total_spin.value(),
-            "payment_method": self.payment_combo.currentText(),
+            "payment_method": self.payment_combo.currentData(),
             "account_id": self.selector.account_id(),
             "credit_card_id": self.selector.credit_card_id(),
             "notes": self.notes_edit.toPlainText().strip() or None,

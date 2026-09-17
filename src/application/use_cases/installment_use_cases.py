@@ -38,6 +38,14 @@ class InstallmentUseCases:
                 date_from=date_from,
                 date_to=date_to,
             )
+
+        # A purchase paid in full (not split) still gets a single-row plan
+        # internally so it counts toward card debt/due-date tracking, but it
+        # isn't a real installment from the user's point of view - hide it
+        # from this list the same way get_multi_installment_map does.
+        multi_plan_ids = {p.id for p in self._plan_repo.find_all() if p.installment_count >= 2}
+        installments = [i for i in installments if i.installment_plan_id in multi_plan_ids]
+
         return [self._to_dto(i) for i in installments]
 
     def _to_dto(self, inst: Installment) -> InstallmentDTO:
