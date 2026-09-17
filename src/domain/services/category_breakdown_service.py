@@ -85,13 +85,24 @@ class CategoryBreakdownService:
             if event_type in (EventType.INCOME, EventType.REFUND):
                 item.total_income += amount
             elif event_type in (
-                EventType.EXPENSE, EventType.PURCHASE, EventType.CARD_PAYMENT,
+                # CARD_PAYMENT/TRANSFER are filtered out before reaching here.
+                EventType.EXPENSE, EventType.PURCHASE,
                 EventType.LOAN_PAYMENT, EventType.INVESTMENT,
             ):
                 item.total_expenses += amount
             item.net = item.total_income - item.total_expenses
 
         for e in events:
+            # Skip events that carry no category and would distort the picture:
+            #  - TRANSFER: internal money movement between the user's own
+            #    accounts, not income or spending.
+            #  - CARD_PAYMENT: paying a credit-card bill. The spending it settles
+            #    is already recorded (with real categories) by the individual
+            #    card purchases, so counting it here double-counts and dumps an
+            #    uncategorized lump into the "no category" slice.
+            if e.event_type in (EventType.TRANSFER, EventType.CARD_PAYMENT):
+                continue
+
             items = []
             if e.event_type == EventType.PURCHASE and self._purchase_repository is not None:
                 purchase = self._purchase_repository.find_by_financial_event(e.id)

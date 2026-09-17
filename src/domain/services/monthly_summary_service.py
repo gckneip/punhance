@@ -31,11 +31,15 @@ class MonthlySummaryService:
         income = sum(
             e.amount for e in events if e.event_type in (EventType.INCOME, EventType.REFUND)
         )
+        # Skip credit-card charges whose bill is still open: counting both the
+        # charge and its later CARD_PAYMENT would double the spend and make
+        # these totals disagree with the account summary ("Resumo de contas").
         expenses = sum(
-            e.amount for e in events if e.event_type in (
+            e.amount for e in events
+            if e.event_type in (
                 EventType.EXPENSE, EventType.PURCHASE, EventType.CARD_PAYMENT,
                 EventType.LOAN_PAYMENT, EventType.INVESTMENT,
-            )
+            ) and not e.is_uncleared_card_charge
         )
         net = income - expenses
 

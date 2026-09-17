@@ -125,6 +125,7 @@ class ChartFilters:
 class TimeSeriesResult:
     labels: List[str] = field(default_factory=list)
     series: Dict[str, List[float]] = field(default_factory=dict)
+    forecast_count: int = 0  # trailing labels/points that are forecast, not actuals
 
 
 @dataclass
@@ -208,6 +209,48 @@ def _month_iteration_bounds(date_from: Optional[date], date_to: Optional[date]) 
     return date_from or _ALL_TIME_START, date_to or (date.today() + timedelta(days=1))
 
 
+def _linear_forecast(values: List[float], steps: int) -> List[float]:
+    """Least-squares linear extrapolation of `values` for `steps` future points.
+
+    Continues the slope of the historical points, which is exactly what the
+    dashed forecast tail visualizes. Degenerate inputs fall back to a flat
+    continuation of the last value.
+    """
+    if steps <= 0:
+        return []
+    n = len(values)
+    if n == 0:
+        return [0.0] * steps
+    if n == 1:
+        return [values[0]] * steps
+    mean_x = (n - 1) / 2.0
+    mean_y = sum(values) / n
+    denom = sum((x - mean_x) ** 2 for x in range(n))
+    if denom == 0:
+        return [values[-1]] * steps
+    slope = sum((x - mean_x) * (values[x] - mean_y) for x in range(n)) / denom
+    intercept = mean_y - slope * mean_x
+    return [intercept + slope * (n - 1 + k) for k in range(1, steps + 1)]
+
+
+def _append_forecast(labels: List[str], series: Dict[str, List[float]], forecast_months: int) -> int:
+    """Extend labels/series in place with `forecast_months` future months, each
+    series linearly extrapolated from its own history. Returns the number of
+    forecast points appended (0 if nothing was added). Every series is
+    extrapolated uniformly, including the cumulative BALANCE line - fitting a
+    line to the running balance simply continues its slope.
+    """
+    if forecast_months <= 0 or not labels:
+        return 0
+    anchor = date(int(labels[-1][:4]), int(labels[-1][5:7]), 1)
+    for k in range(1, forecast_months + 1):
+        future = _shift_months(anchor, k)
+        labels.append(f"{future.year:04d}-{future.month:02d}")
+    for values in series.values():
+        values.extend(_linear_forecast(values, forecast_months))
+    return forecast_months
+
+
 _FREQUENCY_SINGULAR = {"daily": "day", "weekly": "week", "monthly": "month", "yearly": "year"}
 
 
@@ -289,6 +332,7 @@ class ChartDataService:
         metrics: List[MetricType],
         date_range: DateRangeSpec,
         filters: Optional[ChartFilters] = None,
+        forecast_months: int = 0,
     ) -> TimeSeriesResult:
         date_from, date_to = _month_iteration_bounds(*self.resolve_date_range(date_range))
         months = list(_month_range(date_from, date_to))
@@ -340,7 +384,8 @@ class ChartDataService:
                 else:
                     raise ValueError(f"{metric.value} is not supported in a time series")
 
-        return TimeSeriesResult(labels=labels, series=series)
+        forecast_count = _append_forecast(labels, series, forecast_months)
+        return TimeSeriesResult(labels=labels, series=series, forecast_count=forecast_count)
 
     def get_time_series_breakdown(
         self,
@@ -349,6 +394,7 @@ class ChartDataService:
         date_range: DateRangeSpec,
         filters: Optional[ChartFilters] = None,
         top_n: Optional[int] = None,
+        forecast_months: int = 0,
     ) -> TimeSeriesResult:
         """Like get_time_series, but instead of one series per metric this
         returns one series per `group_by` dimension value (e.g. one line per
@@ -405,7 +451,8 @@ class ChartDataService:
         if has_other:
             series["Other"] = other_values
 
-        return TimeSeriesResult(labels=labels, series=series)
+        forecast_count = _append_forecast(labels, series, forecast_months)
+        return TimeSeriesResult(labels=labels, series=series, forecast_count=forecast_count)
 
     def get_breakdown(
         self,
@@ -461,7 +508,7 @@ class ChartDataService:
         rows: List[UpcomingInstallmentRow] = []
         for inst in installments:
             plan = plans.get(inst.installment_plan_id)
-            if plan is None:
+            if plan is None or plan.installment_count < 2:
                 continue
             purchase = purchases_by_id.get(plan.purchase_id)
             if purchase is None:
@@ -621,10 +668,14 @@ class ChartDataService:
 
         agg: Dict[Optional[str], Dict[str, float]] = {}
         for e in events:
-            bucket = agg.setdefault(e.counterparty_id, {"income": 0.0, "expenses": 0.0})
+            # Skip transfers: internal money movement, not a real transaction
+            # with a counterparty. (TRANSFER is in neither tuple below, but this
+            # also keeps it from creating a phantom zero-valued counterparty row.)
             if e.event_type in INCOME_TYPES:
+                bucket = agg.setdefault(e.counterparty_id, {"income": 0.0, "expenses": 0.0})
                 bucket["income"] += e.amount
             elif e.event_type in EXPENSE_TYPES:
+                bucket = agg.setdefault(e.counterparty_id, {"income": 0.0, "expenses": 0.0})
                 bucket["expenses"] += e.amount
 
         labels = {c.id: c.name for c in self._counterparty_repository.find_all()}
@@ -716,7 +767,13 @@ class ChartDataService:
     @staticmethod
     def _classify(events) -> Tuple[float, float]:
         income = sum(e.amount for e in events if e.event_type in INCOME_TYPES)
-        expenses = sum(e.amount for e in events if e.event_type in EXPENSE_TYPES)
+        # Skip credit-card charges whose bill is still open: counting both the
+        # charge and its later CARD_PAYMENT would double the spend and make
+        # these totals disagree with the account summary ("Resumo de contas").
+        expenses = sum(
+            e.amount for e in events
+            if e.event_type in EXPENSE_TYPES and not e.is_uncleared_card_charge
+        )
         return income, expenses
 
     @staticmethod
