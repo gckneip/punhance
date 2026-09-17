@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.0] - 2026-09-17
+
+### Added
+
+- Localization: full English, Portuguese (pt_BR), and Spanish (es) translations across the UI.
+- Calendar view with day/week/month modes and a per-day projected balance.
+- Product spending analysis with a per-product detail view, plus per-item product tracking on purchases.
+- Reusable dashboard widget templates and additional chart widget types.
+- A reusable date-range selector shared across the analytics screens.
+- Multi-report dashboard tabs.
+- Theme customization: premade themes and custom JSON themes, with a restart prompt when the theme changes.
+- Chart forecasting: line charts can extrapolate future months, drawn as a dashed forecast tail.
+- Hover tooltips on bar and line charts (matching the pie chart) that show each bar's / point's value.
+
+### Changed
+
+- Reworked credit-card debt tracking.
+- General UI polish across dialogs and the main window.
+
+### Fixed
+
+- Account Summary and the Dashboard now agree: internal transfers between your own accounts are no longer counted as income or expenses (they still move account balances).
+- Credit-card purchases are no longer double-counted (the purchase plus its later card-bill payment) in the Dashboard/Account Summary expense and balance figures.
+- The category breakdown/pie no longer includes transfers or credit-card bill payments, which shrinks the misleading "no category" slice and removes double-counting.
+- The counterparty breakdown no longer creates phantom zero-value rows for transfers.
+
 ## [0.1.0] - 2026-09-10
 
 First release. Everything below shipped as part of this initial build.
