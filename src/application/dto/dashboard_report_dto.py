@@ -6,3 +6,4 @@ class DashboardReportDTO:
     id: str
     name: str
     sort_order: int
+    context: str = "finance"

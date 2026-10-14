@@ -10,12 +10,13 @@ class DashboardWidgetTemplateUseCases:
     def __init__(self, dashboard_widget_template_repository: DashboardWidgetTemplateRepository):
         self._repo = dashboard_widget_template_repository
 
-    def list_templates(self) -> List[DashboardWidgetTemplateDTO]:
-        return [self._to_dto(t) for t in self._repo.find_all()]
+    def list_templates(self, context: str = "finance") -> List[DashboardWidgetTemplateDTO]:
+        return [self._to_dto(t) for t in self._repo.find_all(context)]
 
     def create_template(self, dto: CreateDashboardWidgetTemplateDTO) -> DashboardWidgetTemplateDTO:
         entity = DashboardWidgetTemplate(
             title=dto.title, config=dto.config, row_span=dto.row_span, col_span=dto.col_span,
+            context=dto.context,
         )
         self._repo.save(entity)
         return self._to_dto(entity)
@@ -26,5 +27,5 @@ class DashboardWidgetTemplateUseCases:
     def _to_dto(self, entity: DashboardWidgetTemplate) -> DashboardWidgetTemplateDTO:
         return DashboardWidgetTemplateDTO(
             id=entity.id, title=entity.title, config=entity.config,
-            row_span=entity.row_span, col_span=entity.col_span,
+            row_span=entity.row_span, col_span=entity.col_span, context=entity.context,
         )

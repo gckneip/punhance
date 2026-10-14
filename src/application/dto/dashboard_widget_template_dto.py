@@ -8,6 +8,7 @@ class CreateDashboardWidgetTemplateDTO:
     config: Dict[str, Any] = field(default_factory=dict)
     row_span: int = 3
     col_span: int = 6
+    context: str = "finance"
 
 
 @dataclass
@@ -17,3 +18,4 @@ class DashboardWidgetTemplateDTO:
     config: Dict[str, Any]
     row_span: int
     col_span: int
+    context: str = "finance"

@@ -20,6 +20,20 @@ from src.infrastructure.repositories.sqlite_dashboard_widget_template_repository
 )
 from src.infrastructure.repositories.sqlite_recurring_event_repository import SQLiteRecurringEventRepository
 from src.infrastructure.repositories.sqlite_app_settings_repository import SQLiteAppSettingsRepository
+from src.infrastructure.repositories.sqlite_investment_repository import SQLiteInvestmentRepository
+from src.infrastructure.repositories.sqlite_investment_transaction_repository import (
+    SQLiteInvestmentTransactionRepository,
+)
+from src.infrastructure.repositories.sqlite_economic_indicator_repository import (
+    SQLiteEconomicIndicatorRepository,
+)
+from src.infrastructure.repositories.sqlite_portfolio_snapshot_repository import (
+    SQLitePortfolioSnapshotRepository,
+)
+from src.infrastructure.repositories.sqlite_investment_schedule_repository import (
+    SQLiteInvestmentScheduleRepository,
+)
+from src.infrastructure.market_data.bcb_sgs_client import BcbSgsClient
 from src.infrastructure.homebank.xhb_reader import XhbReader
 from src.infrastructure.homebank.xhb_writer import XhbWriter
 from src.infrastructure.theming.theme_file_repository import FileThemeRepository
@@ -40,6 +54,10 @@ from src.application.use_cases.app_settings_use_cases import AppSettingsUseCases
 from src.application.use_cases.homebank_import_use_cases import HomeBankImportUseCases
 from src.application.use_cases.homebank_export_use_cases import HomeBankExportUseCases
 from src.application.use_cases.theme_use_cases import ThemeUseCases
+from src.application.use_cases.investment_use_cases import InvestmentUseCases
+from src.application.use_cases.indicator_use_cases import IndicatorUseCases
+from src.domain.services.investment_service import InvestmentService
+from src.domain.services.investment_chart_data_service import InvestmentChartDataService
 from src.domain.entities.theme import LIGHT_PALETTE
 from src.domain.services.credit_card_service import CreditCardService
 from src.domain.services.installment_service import InstallmentService
@@ -120,6 +138,11 @@ def main():
     dashboard_report_repo = SQLiteDashboardReportRepository(conn)
     dashboard_widget_template_repo = SQLiteDashboardWidgetTemplateRepository(conn)
     recurring_event_repo = SQLiteRecurringEventRepository(conn)
+    investment_repo = SQLiteInvestmentRepository(conn)
+    investment_transaction_repo = SQLiteInvestmentTransactionRepository(conn)
+    economic_indicator_repo = SQLiteEconomicIndicatorRepository(conn)
+    portfolio_snapshot_repo = SQLitePortfolioSnapshotRepository(conn)
+    investment_schedule_repo = SQLiteInvestmentScheduleRepository(conn)
 
     account_use_cases = AccountUseCases(account_repo)
     category_use_cases = CategoryUseCases(category_repo)
@@ -142,12 +165,22 @@ def main():
     )
     installment_use_cases = InstallmentUseCases(installment_repo, installment_plan_repo)
     product_use_cases = ProductUseCases(product_repo)
-    monthly_summary_service = MonthlySummaryService(financial_event_repo)
-    category_breakdown_service = CategoryBreakdownService(financial_event_repo, purchase_repo)
-    account_summary_service = AccountSummaryService(financial_event_repo, account_repo)
+    monthly_summary_service = MonthlySummaryService(financial_event_repo, category_repo)
+    category_breakdown_service = CategoryBreakdownService(financial_event_repo, purchase_repo, category_repo)
+    account_summary_service = AccountSummaryService(financial_event_repo, account_repo, category_repo)
     recurring_event_service = RecurringEventService()
     recurring_event_use_cases = RecurringEventUseCases(
         recurring_event_repo, financial_event_repo, recurring_event_service
+    )
+    investment_use_cases = InvestmentUseCases(
+        investment_repo, investment_transaction_repo, InvestmentService(),
+        portfolio_snapshot_repo, investment_schedule_repo,
+    )
+    indicator_use_cases = IndicatorUseCases(
+        economic_indicator_repo, BcbSgsClient(), app_settings_repo
+    )
+    investment_chart_data_service = InvestmentChartDataService(
+        investment_use_cases, indicator_use_cases, portfolio_snapshot_repo
     )
 
     homebank_import_use_cases = HomeBankImportUseCases(
@@ -185,7 +218,17 @@ def main():
     dashboard_layout_use_cases.seed_default_layout_if_empty()
     dashboard_report_use_cases = DashboardReportUseCases(dashboard_report_repo, dashboard_widget_repo)
     dashboard_report_use_cases.seed_default_if_empty()
+    # Seed the customizable Investments dashboard (its own context/report + widgets).
+    dashboard_report_use_cases.seed_default_if_empty(
+        name="Investments", context="investments", report_id="investments_default",
+    )
+    dashboard_layout_use_cases.seed_investment_default_layout_if_empty("investments_default")
     dashboard_widget_template_use_cases = DashboardWidgetTemplateUseCases(dashboard_widget_template_repo)
+
+    # Materialize any past-due scheduled contributions, then record today's
+    # portfolio snapshot (so the snapshot reflects the generated deposits).
+    investment_use_cases.generate_due_schedules()
+    investment_use_cases.record_snapshot()
 
     window = MainWindow(
         account_use_cases,
@@ -207,6 +250,9 @@ def main():
         theme_use_cases=theme_use_cases,
         product_use_cases=product_use_cases,
         dashboard_widget_template_use_cases=dashboard_widget_template_use_cases,
+        investment_use_cases=investment_use_cases,
+        indicator_use_cases=indicator_use_cases,
+        investment_chart_data_service=investment_chart_data_service,
     )
     window.show()
     sys.exit(app.exec())

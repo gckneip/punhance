@@ -10,6 +10,7 @@ class DashboardWidgetTemplate:
     config: Dict[str, Any] = field(default_factory=dict)
     row_span: int = 3
     col_span: int = 6
+    context: str = "finance"
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: Optional[str] = None
     updated_at: Optional[str] = None

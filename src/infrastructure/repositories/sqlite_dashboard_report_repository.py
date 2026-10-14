@@ -14,10 +14,11 @@ class SQLiteDashboardReportRepository(DashboardReportRepository):
         self._conn.execute(
             """
             INSERT OR REPLACE INTO dashboard_reports (
-                id, name, sort_order, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?)
+                id, name, sort_order, context, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (report.id, report.name, report.sort_order, report.created_at, report.updated_at),
+            (report.id, report.name, report.sort_order, report.context,
+             report.created_at, report.updated_at),
         )
         self._conn.commit()
 
@@ -34,10 +35,16 @@ class SQLiteDashboardReportRepository(DashboardReportRepository):
             return None
         return self._to_entity(row)
 
-    def find_all(self) -> List[DashboardReport]:
-        cursor = self._conn.execute(
-            "SELECT * FROM dashboard_reports ORDER BY sort_order, created_at"
-        )
+    def find_all(self, context: Optional[str] = None) -> List[DashboardReport]:
+        if context is None:
+            cursor = self._conn.execute(
+                "SELECT * FROM dashboard_reports ORDER BY sort_order, created_at"
+            )
+        else:
+            cursor = self._conn.execute(
+                "SELECT * FROM dashboard_reports WHERE context = ? ORDER BY sort_order, created_at",
+                (context,),
+            )
         return [self._to_entity(row) for row in cursor.fetchall()]
 
     def delete(self, report_id: str) -> None:
@@ -49,6 +56,7 @@ class SQLiteDashboardReportRepository(DashboardReportRepository):
             id=row["id"],
             name=row["name"],
             sort_order=row["sort_order"],
+            context=row["context"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

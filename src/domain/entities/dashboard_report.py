@@ -8,6 +8,7 @@ from typing import Optional
 class DashboardReport:
     name: str
     sort_order: int = 0
+    context: str = "finance"
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: Optional[str] = None
     updated_at: Optional[str] = None

@@ -336,9 +336,11 @@ class SavingsRateStatWidget(QFrame):
         self._value_label = QLabel("0.0%")
         layout.addWidget(make_stat_card(t("builtin.savings_rate"), self._value_label))
 
-    def set_rate(self, income: float, expenses: float):
+    def set_rate(self, income: float, invested: float):
+        # Savings Rate = share of income put into investments this month
+        # (net of redemptions). Money merely left in cash is not counted.
         rate = 0.0
         if income > 0:
-            rate = ((income - expenses) / income) * 100
+            rate = (invested / income) * 100
         self._value_label.setText(f"{i18n.format_number(rate, 1)}%")
         self._value_label.setStyleSheet(f"color: {theme.INCOME if rate >= 0 else theme.EXPENSE};")

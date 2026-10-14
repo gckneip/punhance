@@ -17,7 +17,7 @@ class DashboardReportRepository(ABC):
         pass
 
     @abstractmethod
-    def find_all(self) -> List[DashboardReport]:
+    def find_all(self, context: Optional[str] = None) -> List[DashboardReport]:
         pass
 
     @abstractmethod

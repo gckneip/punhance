@@ -2,7 +2,7 @@ import math
 from typing import Dict, List, Optional
 
 import pyqtgraph as pg
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QLabel, QSizePolicy, QToolTip, QVBoxLayout, QWidget
 
@@ -10,11 +10,33 @@ from src.presentation import theme
 from src.presentation.i18n import format_currency, format_number, t
 
 
+def _format_value(
+    value: float, value_format: str, decimals: int, currency_code: str, for_axis: bool = False
+) -> str:
+    """Format a chart value per the widget's configured unit.
+
+    The currency case intentionally differs between axis and tooltip to preserve
+    the original behavior: axis ticks show a bare localized number (no symbol),
+    while the hover tooltip shows the full currency string.
+    """
+    if value_format == "currency":
+        if for_axis:
+            return format_number(value, decimals)
+        return format_currency(value, currency_code)
+    if value_format == "percent":
+        return f"{format_number(value, decimals)}%"
+    return format_number(value, decimals)
+
+
 class _ValueAxis(pg.AxisItem):
     """Left (value) axis that formats ticks with the active locale."""
 
+    def __init__(self, *args, formatter=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._formatter = formatter or (lambda v: format_number(v, 0))
+
     def tickStrings(self, values, scale, spacing):
-        return [format_number(v, 0) for v in values]
+        return [self._formatter(v) for v in values]
 
 
 def configure_pyqtgraph_theme() -> None:
@@ -37,9 +59,23 @@ def _resolve_color(series_name: str, index: int) -> str:
 class ChartWidget(QWidget):
     """pyqtgraph-backed line/bar chart. Feed it with set_series()."""
 
-    def __init__(self, chart_type: str, parent=None):
+    def __init__(
+        self,
+        chart_type: str,
+        parent=None,
+        value_format: str = "currency",
+        value_decimals: int = 0,
+        currency_code: str = "BRL",
+    ):
         super().__init__(parent)
         self._chart_type = chart_type  # "line" | "bar"
+        # Value formatting for the left axis + hover tooltip. Defaults preserve
+        # the original behavior (BRL currency, 0-decimal ticks) so existing
+        # dashboard charts are unaffected; the Market/indicators tab overrides
+        # these to render percentages and exchange rates correctly.
+        self._value_format = value_format  # "currency" | "number" | "percent"
+        self._value_decimals = value_decimals
+        self._currency_code = currency_code
 
         # Hover state: geometry of the drawn marks (in data/view coordinates)
         # so mouse moves can hit-test a bar or a line node and show a tooltip,
@@ -48,7 +84,9 @@ class ChartWidget(QWidget):
         self._hover_nodes: List[tuple] = []  # (name, label, value, x, y)
         self._show_series_name = False
 
-        self._plot = pg.PlotWidget(axisItems={"left": _ValueAxis(orientation="left")})
+        self._plot = pg.PlotWidget(
+            axisItems={"left": _ValueAxis(orientation="left", formatter=self._format_axis_value)}
+        )
         self._plot.showGrid(x=False, y=True, alpha=0.3)
         self._plot.getAxis("left").setTextPen(theme.TEXT_SECONDARY)
         self._plot.getAxis("bottom").setTextPen(theme.TEXT_SECONDARY)
@@ -79,6 +117,15 @@ class ChartWidget(QWidget):
         # Hover a bar / line node -> tooltip with its value (see PieChartWidget).
         self._plot.scene().sigMouseMoved.connect(self._on_scene_mouse_moved)
 
+    def set_value_format(
+        self, value_format: str, decimals: int = 0, currency_code: str = "BRL"
+    ) -> None:
+        """Reconfigure axis/tooltip value formatting (e.g. when the Market tab
+        switches between a percentage indicator and an exchange rate)."""
+        self._value_format = value_format
+        self._value_decimals = decimals
+        self._currency_code = currency_code
+
     def set_empty_state(self, message: str) -> None:
         self._hover_bars = []
         self._hover_nodes = []
@@ -103,7 +150,18 @@ class ChartWidget(QWidget):
 
         x = list(range(len(labels)))
         axis = self._plot.getAxis("bottom")
-        axis.setTicks([[(xi, label) for xi, label in zip(x, labels)]])
+        # Thin the bottom-axis labels so dense series (e.g. ~120 daily indicator
+        # points) don't render as an unreadable smear. All data points and hover
+        # nodes are kept; only the tick labels are strided. First and last are
+        # always shown. Sparse series (<= max_ticks) are unaffected.
+        max_ticks = 12
+        step = max(1, len(labels) // max_ticks)
+        ticks = [
+            (xi, label)
+            for i, (xi, label) in enumerate(zip(x, labels))
+            if i % step == 0 or i == len(labels) - 1
+        ]
+        axis.setTicks([ticks])
 
         names = list(series.keys())
         n_series = len(names)
@@ -159,8 +217,17 @@ class ChartWidget(QWidget):
 
         self._legend.setVisible(n_series > 1)
 
+    def _format_axis_value(self, value: float) -> str:
+        return _format_value(
+            value, self._value_format, self._value_decimals, self._currency_code,
+            for_axis=True,
+        )
+
     def _tooltip_text(self, name: str, label: str, value: float) -> str:
-        body = f"{label}: {format_currency(value, 'BRL')}"
+        body = "{}: {}".format(
+            label,
+            _format_value(value, self._value_format, self._value_decimals, self._currency_code),
+        )
         return f"{name} — {body}" if self._show_series_name else body
 
     def _on_scene_mouse_moved(self, scene_pos) -> None:
@@ -201,6 +268,11 @@ class ChartWidget(QWidget):
 
 class PieChartWidget(QWidget):
     """Custom-painted pie chart - pyqtgraph has no native pie primitive."""
+
+    # Emitted when a slice is clicked: (index into the fed labels, label).
+    # The index matches the order passed to set_series (entries with value <= 0
+    # are dropped, so feed only positive values to keep indices aligned).
+    slice_clicked = Signal(int, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -279,11 +351,21 @@ class PieChartWidget(QWidget):
         idx = self._slice_at(event.position().toPoint()) if self._entries else None
         if idx is None:
             QToolTip.hideText()
+            self.unsetCursor()
         else:
             label, value, _ = self._entries[idx]
             QToolTip.showText(event.globalPosition().toPoint(),
                               f"{label}: {format_currency(value, 'BRL')}", self)
+            self.setCursor(Qt.PointingHandCursor)
         super().mouseMoveEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self._entries:
+            idx = self._slice_at(event.position().toPoint())
+            if idx is not None:
+                label, _value, _color = self._entries[idx]
+                self.slice_clicked.emit(idx, label)
+        super().mousePressEvent(event)
 
     def paintEvent(self, event):
         painter = QPainter(self)

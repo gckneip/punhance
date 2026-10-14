@@ -15,8 +15,8 @@ class SQLiteDashboardWidgetTemplateRepository(DashboardWidgetTemplateRepository)
         self._conn.execute(
             """
             INSERT OR REPLACE INTO dashboard_widget_templates (
-                id, title, config_json, row_span, col_span, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                id, title, config_json, row_span, col_span, context, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 template.id,
@@ -24,6 +24,7 @@ class SQLiteDashboardWidgetTemplateRepository(DashboardWidgetTemplateRepository)
                 json.dumps(template.config),
                 template.row_span,
                 template.col_span,
+                template.context,
                 template.created_at,
                 template.updated_at,
             ),
@@ -39,10 +40,16 @@ class SQLiteDashboardWidgetTemplateRepository(DashboardWidgetTemplateRepository)
             return None
         return self._to_entity(row)
 
-    def find_all(self) -> List[DashboardWidgetTemplate]:
-        cursor = self._conn.execute(
-            "SELECT * FROM dashboard_widget_templates ORDER BY created_at"
-        )
+    def find_all(self, context: Optional[str] = None) -> List[DashboardWidgetTemplate]:
+        if context is None:
+            cursor = self._conn.execute(
+                "SELECT * FROM dashboard_widget_templates ORDER BY created_at"
+            )
+        else:
+            cursor = self._conn.execute(
+                "SELECT * FROM dashboard_widget_templates WHERE context = ? ORDER BY created_at",
+                (context,),
+            )
         return [self._to_entity(row) for row in cursor.fetchall()]
 
     def delete(self, template_id: str) -> None:
@@ -58,6 +65,7 @@ class SQLiteDashboardWidgetTemplateRepository(DashboardWidgetTemplateRepository)
             config=json.loads(row["config_json"]) if row["config_json"] else {},
             row_span=row["row_span"],
             col_span=row["col_span"],
+            context=row["context"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
