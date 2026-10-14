@@ -11,6 +11,8 @@ from src.domain.entities.financial_event import EventType
 from src.domain.entities.purchase import PaymentMethod
 from src.domain.entities.recurring_event import RecurrenceFrequency
 from src.domain.entities.installment import InstallmentStatus
+from src.domain.entities.investment import AssetType
+from src.domain.entities.investment_transaction import InvestmentTxnType
 from src.presentation.i18n import t
 
 
@@ -36,6 +38,14 @@ def recurrence_frequency_label(item) -> str:
 
 def installment_status_label(item) -> str:
     return t(f"enum.installment_status.{_value(item)}")
+
+
+def asset_type_label(item) -> str:
+    return t(f"enum.asset_type.{_value(item)}")
+
+
+def investment_txn_label(item) -> str:
+    return t(f"enum.investment_txn.{_value(item)}")
 
 
 # Canonical English titles of the shipped default dashboard widgets / report,
@@ -84,3 +94,12 @@ def payment_method_choices():
 
 def recurrence_frequency_choices():
     return [(m, recurrence_frequency_label(m)) for m in RecurrenceFrequency]
+
+
+def asset_type_choices():
+    """(enum, label) pairs for populating an AssetType combo."""
+    return [(m, asset_type_label(m)) for m in AssetType]
+
+
+def investment_txn_choices():
+    return [(m, investment_txn_label(m)) for m in InvestmentTxnType]
