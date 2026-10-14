@@ -14,6 +14,7 @@ class EventType(Enum):
     LOAN_PAYMENT = "loan_payment"
     INVESTMENT = "investment"
     REFUND = "refund"
+    REDEMPTION = "redemption"
 
 
 # Expense-like events that can be charged directly to a credit card instead

@@ -22,9 +22,12 @@ from src.domain.services.monthly_summary_service import MonthlySummaryService
 from src.domain.services.recurring_event_service import RecurringEventService
 
 INCOME_TYPES = (EventType.INCOME, EventType.REFUND)
+# INVESTMENT (buying into a holding) and REDEMPTION (cashing out) are excluded:
+# like transfers, they move money between your cash and your holdings, so they
+# change account balances but are not monthly spending or income.
 EXPENSE_TYPES = (
     EventType.EXPENSE, EventType.PURCHASE, EventType.CARD_PAYMENT,
-    EventType.LOAN_PAYMENT, EventType.INVESTMENT,
+    EventType.LOAN_PAYMENT,
 )
 
 
@@ -666,11 +669,14 @@ class ChartDataService:
         date_from, date_to = self.resolve_date_range(date_range)
         events = self._events_in_range(date_from, date_to, filters)
 
+        investment_cats = self._category_repository.find_investment_ids()
         agg: Dict[Optional[str], Dict[str, float]] = {}
         for e in events:
             # Skip transfers: internal money movement, not a real transaction
             # with a counterparty. (TRANSFER is in neither tuple below, but this
             # also keeps it from creating a phantom zero-valued counterparty row.)
+            if e.category_id in investment_cats:
+                continue  # investment-category events are balance-only movements
             if e.event_type in INCOME_TYPES:
                 bucket = agg.setdefault(e.counterparty_id, {"income": 0.0, "expenses": 0.0})
                 bucket["income"] += e.amount
@@ -764,15 +770,44 @@ class ChartDataService:
             return events
         return [e for e in events if self._matches_filters(e, filters)]
 
-    @staticmethod
-    def _classify(events) -> Tuple[float, float]:
-        income = sum(e.amount for e in events if e.event_type in INCOME_TYPES)
+    def get_invested(self, date_range: DateRangeSpec, filters: Optional[ChartFilters] = None) -> float:
+        """Net amount moved into investments over the period: investment outflows
+        (INVESTMENT events + expense-like events in investment-flagged categories)
+        minus investment inflows (REDEMPTION + income-like events in those
+        categories). This is what the Savings Rate measures against income."""
+        date_from, date_to = self.resolve_date_range(date_range)
+        events = self._events_in_range(date_from, date_to, filters)
+        investment_cats = self._category_repository.find_investment_ids()
+        invested = 0.0
+        for e in events:
+            if e.is_uncleared_card_charge:
+                continue
+            if e.event_type == EventType.INVESTMENT:
+                invested += e.amount
+            elif e.event_type == EventType.REDEMPTION:
+                invested -= e.amount
+            elif e.category_id in investment_cats:
+                if e.event_type in INCOME_TYPES:
+                    invested -= e.amount
+                else:
+                    invested += e.amount
+        return invested
+
+    def _classify(self, events) -> Tuple[float, float]:
+        # Events in an investment-flagged category behave like investments:
+        # excluded from income/expense (they only move balances).
+        investment_cats = self._category_repository.find_investment_ids()
+        income = sum(
+            e.amount for e in events
+            if e.event_type in INCOME_TYPES and e.category_id not in investment_cats
+        )
         # Skip credit-card charges whose bill is still open: counting both the
         # charge and its later CARD_PAYMENT would double the spend and make
         # these totals disagree with the account summary ("Resumo de contas").
         expenses = sum(
             e.amount for e in events
             if e.event_type in EXPENSE_TYPES and not e.is_uncleared_card_charge
+            and e.category_id not in investment_cats
         )
         return income, expenses
 

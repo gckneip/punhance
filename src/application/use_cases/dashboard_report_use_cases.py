@@ -14,11 +14,13 @@ class DashboardReportUseCases:
         self._repo = dashboard_report_repository
         self._widget_repo = dashboard_widget_repository
 
-    def list_reports(self) -> List[DashboardReportDTO]:
-        return [self._to_dto(r) for r in self._repo.find_all()]
+    def list_reports(self, context: str = "finance") -> List[DashboardReportDTO]:
+        return [self._to_dto(r) for r in self._repo.find_all(context)]
 
-    def create_report(self, name: str) -> DashboardReportDTO:
-        entity = DashboardReport(name=name, sort_order=len(self._repo.find_all()))
+    def create_report(self, name: str, context: str = "finance") -> DashboardReportDTO:
+        entity = DashboardReport(
+            name=name, sort_order=len(self._repo.find_all(context)), context=context,
+        )
         self._repo.save(entity)
         return self._to_dto(entity)
 
@@ -45,10 +47,14 @@ class DashboardReportUseCases:
         self._widget_repo.delete_by_dashboard_id(report_id)
         self._repo.delete(report_id)
 
-    def seed_default_if_empty(self, name: str = "Dashboard") -> None:
-        if self._repo.find_all():
+    def seed_default_if_empty(
+        self, name: str = "Dashboard", context: str = "finance", report_id: str = "default"
+    ) -> None:
+        if self._repo.find_all(context):
             return
-        self._repo.save(DashboardReport(id="default", name=name, sort_order=0))
+        self._repo.save(DashboardReport(id=report_id, name=name, sort_order=0, context=context))
 
     def _to_dto(self, entity: DashboardReport) -> DashboardReportDTO:
-        return DashboardReportDTO(id=entity.id, name=entity.name, sort_order=entity.sort_order)
+        return DashboardReportDTO(
+            id=entity.id, name=entity.name, sort_order=entity.sort_order, context=entity.context,
+        )

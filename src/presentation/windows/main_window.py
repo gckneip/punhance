@@ -1,9 +1,10 @@
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QFont, QKeySequence, QShortcut
+from PySide6.QtGui import QFont, QKeySequence, QShortcut, QColor
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMenu,
-    QTableWidget, QTableWidgetItem, QFileDialog,
+    QTableWidget, QTableWidgetItem, QFileDialog, QStackedWidget, QButtonGroup,
     QLabel, QMessageBox, QDateEdit, QComboBox, QLineEdit, QAbstractItemView,
+    QInputDialog,
 )
 from datetime import date, timedelta
 
@@ -15,11 +16,15 @@ from src.application.use_cases.financial_event_use_cases import FinancialEventUs
 from src.application.use_cases.purchase_use_cases import PurchaseUseCases
 from src.application.use_cases.installment_use_cases import InstallmentUseCases
 from src.application.use_cases.recurring_event_use_cases import RecurringEventUseCases
+from src.application.use_cases.investment_use_cases import InvestmentUseCases
+from src.application.use_cases.indicator_use_cases import IndicatorUseCases
 from src.application.dto.account_dto import CreateAccountDTO
 from src.application.dto.category_dto import CreateCategoryDTO
 from src.application.dto.counterparty_dto import CreateCounterpartyDTO
 from src.application.dto.credit_card_dto import CreateCreditCardDTO
 from src.application.dto.financial_event_dto import CreateFinancialEventDTO
+from src.domain.entities.financial_event import EventType
+from src.domain.entities.investment import AssetType
 from src.application.dto.purchase_dto import CreatePurchaseDTO, CreatePurchaseItemDTO
 from src.application.dto.product_dto import CreateProductDTO
 from src.application.dto.recurring_event_dto import CreateRecurringEventDTO
@@ -48,6 +53,17 @@ from src.infrastructure.theming.theme_parser import ThemeParseError
 from src.presentation.app_restart import restart_app
 from src.presentation.widgets.dashboard.dashboard_tabs_widget import DashboardTabsWidget
 from src.presentation.widgets.dashboard.chart_widget import PieChartWidget
+from src.presentation.widgets.dashboard.investment_dashboard_tabs_widget import (
+    InvestmentDashboardTabsWidget,
+)
+from src.presentation.widgets.holdings_widget import HoldingsPanel
+from src.presentation.widgets.caixinhas_widget import CaixinhasPanel
+from src.presentation.widgets.indicators_widget import IndicatorsWidget
+from src.presentation.widgets.predictions_widget import PredictionsWidget
+from src.presentation.dialogs.invest_action_dialog import InvestActionDialog
+from src.presentation.dialogs.investment_schedule_dialog import InvestmentScheduleDialog
+from src.application.dto.investment_transaction_dto import CreateInvestmentTransactionDTO
+from src.application.dto.investment_schedule_dto import CreateInvestmentScheduleDTO
 from src.presentation.widgets.date_range_selector import DateRangeSelector
 from src.presentation.widgets.installments_widget import InstallmentsWidget
 from src.presentation.widgets.calendar_widget import CalendarWidget
@@ -84,6 +100,9 @@ class MainWindow(QMainWindow):
         theme_use_cases: ThemeUseCases = None,
         product_use_cases=None,
         dashboard_widget_template_use_cases=None,
+        investment_use_cases: InvestmentUseCases = None,
+        indicator_use_cases: IndicatorUseCases = None,
+        investment_chart_data_service=None,
     ):
         super().__init__()
         self._account_use_cases = account_use_cases
@@ -102,6 +121,11 @@ class MainWindow(QMainWindow):
         self._theme_use_cases = theme_use_cases
         self._product_use_cases = product_use_cases
         self._dashboard_widget_template_use_cases = dashboard_widget_template_use_cases
+        self._dashboard_layout_use_cases = dashboard_layout_use_cases
+        self._dashboard_report_use_cases = dashboard_report_use_cases
+        self._investment_use_cases = investment_use_cases
+        self._indicator_use_cases = indicator_use_cases
+        self._investment_chart_data_service = investment_chart_data_service
 
         self.setWindowTitle(t("app.title"))
         self.setWindowIcon(icons.icon("fa6s.sack-dollar", color=theme.PRIMARY))
@@ -128,6 +152,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+K"), self, activated=self._focus_quick_add)
 
     def _focus_quick_add(self):
+        self._set_mode(0)
         self._tabs.setCurrentWidget(self._dashboard)
         self._dashboard.focus_quick_add()
 
@@ -156,6 +181,8 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
 
+        self._build_mode_bar(layout)
+
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
 
@@ -165,6 +192,7 @@ class MainWindow(QMainWindow):
         self._btn_add.setToolTip(t("mainwindow.tooltip.add"))
         toolbar.addWidget(self._btn_add)
         self._build_add_menu()
+        self._build_invest_menu()
 
         toolbar.addStretch()
 
@@ -184,24 +212,89 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(toolbar)
 
-        if self._navigation_style == NavigationStyle.TABS:
-            self._tabs = TabNavHost()
-        else:
-            self._tabs = SidebarNavHost(mode=self._app_settings_use_cases.get_sidebar_mode())
-            self._tabs.mode_changed.connect(self._app_settings_use_cases.set_sidebar_mode)
-        layout.addWidget(self._tabs)
+        # Two navigation hosts, one per top-level mode, swapped by the mode bar.
+        # Finance build methods target self._tabs, left pointing at the finance
+        # host so every existing _build_*_tab call site stays untouched.
+        self._finance_nav = self._make_nav_host()
+        self._investment_nav = self._make_nav_host()
+        self._tabs = self._finance_nav
 
+        self._mode_stack = QStackedWidget()
+        self._mode_stack.addWidget(self._finance_nav)
+        self._mode_stack.addWidget(self._investment_nav)
+        layout.addWidget(self._mode_stack)
+
+        # Finance mode tabs
         self._build_events_tab()
         self._build_calendar_tab()
         self._build_accounts_tab()
         self._build_categories_tab()
         self._build_counterparties_tab()
         self._build_products_tab()
+        self._build_shopping_list_tab()
         self._build_credit_cards_tab()
         self._build_installments_tab()
         self._build_recurring_events_tab()
         self._build_category_breakdown_tab()
         self._build_account_summary_tab()
+
+        # Investments mode tabs
+        self._build_investment_tabs()
+
+    def _make_nav_host(self):
+        if self._navigation_style == NavigationStyle.TABS:
+            return TabNavHost()
+        host = SidebarNavHost(mode=self._app_settings_use_cases.get_sidebar_mode())
+        host.mode_changed.connect(self._app_settings_use_cases.set_sidebar_mode)
+        return host
+
+    def _build_mode_bar(self, layout):
+        row = QHBoxLayout()
+        row.setSpacing(0)
+
+        self._mode_group = QButtonGroup(self)
+        self._mode_group.setExclusive(True)
+
+        self._btn_mode_finance = QPushButton(t("mode.finance"))
+        self._btn_mode_finance.setObjectName("modeToggle")
+        self._btn_mode_finance.setIcon(icons.icon("fa6s.wallet"))
+        self._btn_mode_finance.setCheckable(True)
+        self._btn_mode_finance.setChecked(True)
+        self._btn_mode_finance.clicked.connect(lambda: self._set_mode(0))
+
+        self._btn_mode_invest = QPushButton(t("mode.investments"))
+        self._btn_mode_invest.setObjectName("modeToggle")
+        self._btn_mode_invest.setIcon(icons.icon("fa6s.chart-line"))
+        self._btn_mode_invest.setCheckable(True)
+        self._btn_mode_invest.clicked.connect(lambda: self._set_mode(1))
+
+        self._mode_group.addButton(self._btn_mode_finance)
+        self._mode_group.addButton(self._btn_mode_invest)
+
+        row.addWidget(self._btn_mode_finance)
+        row.addWidget(self._btn_mode_invest)
+        row.addStretch()
+        layout.addLayout(row)
+
+    def _set_mode(self, index):
+        self._mode_stack.setCurrentIndex(index)
+        self._btn_mode_finance.setChecked(index == 0)
+        self._btn_mode_invest.setChecked(index == 1)
+        self._update_add_button(index)
+
+    def _update_add_button(self, index):
+        # The primary "+" button becomes "Investir" (with invest/schedule/redeem)
+        # in Investments mode, and "Adicionar" (events/purchases/…) in Finance.
+        if index == 1:
+            self._btn_add.setText(t("mainwindow.btn.invest"))
+            self._btn_add.setToolTip(t("mainwindow.tooltip.invest"))
+            self._btn_add.setIcon(icons.icon("fa6s.money-bill-trend-up", color="white"))
+            self._btn_add.setMenu(self._invest_menu)
+        else:
+            self._btn_add.setText(t("mainwindow.btn.add"))
+            self._btn_add.setToolTip(t("mainwindow.tooltip.add"))
+            self._btn_add.setIcon(icons.icon("fa6s.circle-plus", color="white"))
+            self._btn_add.setMenu(self._add_menu)
 
     def _build_add_menu(self):
         menu = QMenu(self)
@@ -220,7 +313,23 @@ class MainWindow(QMainWindow):
         action_transfer = menu.addAction(icons.icon("fa6s.right-left"), t("mainwindow.menu.create_transfer"))
         action_transfer.triggered.connect(self._add_transfer)
 
+        self._add_menu = menu
         self._btn_add.setMenu(menu)
+
+    def _build_invest_menu(self):
+        # The "+ Add" button's alternate menu, shown while in Investments mode.
+        menu = QMenu(self)
+
+        action_invest = menu.addAction(icons.icon("fa6s.money-bill-trend-up"), t("mainwindow.menu.invest"))
+        action_invest.triggered.connect(lambda: self._open_invest_action("invest"))
+
+        action_schedule = menu.addAction(icons.icon("fa6s.calendar-plus"), t("mainwindow.menu.schedule_investment"))
+        action_schedule.triggered.connect(self._schedule_investment)
+
+        action_redeem = menu.addAction(icons.icon("fa6s.money-bill-wave"), t("mainwindow.menu.redeem"))
+        action_redeem.triggered.connect(lambda: self._open_invest_action("redeem"))
+
+        self._invest_menu = menu
 
     def _build_data_menu(self):
         menu = QMenu(self)
@@ -430,6 +539,47 @@ class MainWindow(QMainWindow):
 
         self._tabs.addTab(tab, icons.icon("fa6s.box"), t("mainwindow.tab.products"))
 
+    def _build_shopping_list_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        hint = QLabel(t("mainwindow.shopping.hint"))
+        hint.setWordWrap(True)
+        hint.setObjectName("mutedLabel")
+        layout.addWidget(hint)
+
+        controls = QHBoxLayout()
+        controls.addWidget(QLabel(t("mainwindow.shopping.horizon_label")))
+        self._shopping_horizon = QComboBox()
+        self._shopping_horizon.addItem(t("mainwindow.shopping.horizon.weekly"), "weekly")
+        self._shopping_horizon.addItem(t("mainwindow.shopping.horizon.monthly"), "monthly")
+        self._shopping_horizon.setCurrentIndex(1)  # default: next month
+        self._shopping_horizon.currentIndexChanged.connect(lambda _i: self._refresh_shopping_list())
+        controls.addWidget(self._shopping_horizon)
+        controls.addStretch()
+        self._shopping_summary = QLabel("")
+        controls.addWidget(self._shopping_summary)
+        layout.addLayout(controls)
+
+        self._shopping_table = EvenColumnsTableWidget()
+        self._shopping_table.setColumnCount(7)
+        self._shopping_table.setHorizontalHeaderLabels([
+            t("common.name"),
+            t("mainwindow.table.shopping.header.quantity"),
+            t("mainwindow.table.shopping.header.est_cost"),
+            t("mainwindow.table.shopping.header.cadence"),
+            t("mainwindow.table.shopping.header.due"),
+            t("mainwindow.table.products.header.best_price"),
+            t("mainwindow.table.shopping.header.confidence"),
+        ])
+        self._shopping_table.setObjectName("mainTabTable")
+        self._shopping_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._shopping_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._shopping_table.setAlternatingRowColors(True)
+        layout.addWidget(self._shopping_table)
+
+        self._tabs.addTab(tab, icons.icon("fa6s.cart-shopping"), t("mainwindow.tab.shopping_list"))
+
     def _build_credit_cards_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
@@ -464,6 +614,54 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._credit_cards_table)
 
         self._tabs.addTab(tab, icons.icon("fa6s.credit-card"), t("mainwindow.tab.credit_cards"))
+
+    def _build_investment_tabs(self):
+        # Investments mode: a customizable analytics dashboard ("Painel"), a
+        # holdings manager ("Carteira"), and an economic-indicators tab
+        # ("Indicadores"), all hosted in the dedicated investment nav host.
+        self._investment_dashboard = InvestmentDashboardTabsWidget(
+            self._dashboard_report_use_cases,
+            self._dashboard_layout_use_cases,
+            self._investment_chart_data_service,
+            dashboard_widget_template_use_cases=self._dashboard_widget_template_use_cases,
+        )
+        self._investment_nav.addTab(
+            self._investment_dashboard, icons.icon("fa6s.gauge-high"), t("mainwindow.tab.dashboard")
+        )
+
+        if self._investment_use_cases is not None:
+            self._holdings_widget = HoldingsPanel(
+                self._investment_use_cases, self._account_use_cases,
+            )
+            self._holdings_widget.changed.connect(self._on_holdings_changed)
+            self._investment_nav.addTab(
+                self._holdings_widget, icons.icon("fa6s.briefcase"), t("mainwindow.tab.portfolio")
+            )
+
+            self._caixinhas_widget = CaixinhasPanel(
+                self._investment_use_cases, self._account_use_cases,
+                self._financial_event_use_cases,
+            )
+            self._caixinhas_widget.changed.connect(self._on_holdings_changed)
+            self._investment_nav.addTab(
+                self._caixinhas_widget, icons.icon("fa6s.piggy-bank"), t("mainwindow.tab.savings_boxes")
+            )
+
+        self._predictions_widget = PredictionsWidget(self._investment_chart_data_service)
+        self._investment_nav.addTab(
+            self._predictions_widget, icons.icon("fa6s.arrow-trend-up"), t("mainwindow.tab.predictions")
+        )
+
+        if self._indicator_use_cases is not None:
+            self._indicators_widget = IndicatorsWidget(
+                self._investment_chart_data_service, self._indicator_use_cases,
+            )
+            self._indicators_widget.indicators_updated.connect(self._refresh_investment_dashboard)
+            self._investment_nav.addTab(
+                self._indicators_widget, icons.icon("fa6s.chart-line"), t("mainwindow.tab.indicators")
+            )
+
+        self._investment_nav.setCurrentIndex(0)
 
     def _build_calendar_tab(self):
         self._calendar_widget = CalendarWidget(
@@ -568,6 +766,7 @@ class MainWindow(QMainWindow):
                 name=data["name"],
                 color=data["color"],
                 parent_id=data["parent_id"],
+                is_investment=data["is_investment"],
             )
             self._category_use_cases.create_category(dto)
             self._refresh_all()
@@ -585,6 +784,7 @@ class MainWindow(QMainWindow):
                 name=data["name"],
                 color=data["color"],
                 parent_id=data["parent_id"],
+                is_investment=data["is_investment"],
             )
             self._category_use_cases.update_category(category_id, dto)
             self._refresh_all()
@@ -703,6 +903,128 @@ class MainWindow(QMainWindow):
             )
             self._credit_card_use_cases.update_card(card_id, dto)
             self._refresh_all()
+
+    # ---- Investments ----------------------------------------------------
+    def _on_holdings_changed(self):
+        # A holding was mutated in the Carteira tab -> record a fresh portfolio
+        # snapshot and refresh the analytics dashboard.
+        if self._investment_use_cases is not None:
+            self._investment_use_cases.record_snapshot()
+        self._refresh_investment_dashboard()
+
+    def _refresh_investment_dashboard(self):
+        if hasattr(self, "_investment_dashboard"):
+            self._investment_dashboard.refresh()
+        if hasattr(self, "_predictions_widget"):
+            self._predictions_widget.refresh()
+        if hasattr(self, "_holdings_widget"):
+            self._holdings_widget.refresh()
+        if hasattr(self, "_caixinhas_widget"):
+            self._caixinhas_widget.refresh()
+
+    def _choose_holding(self, title):
+        """Pick which holding a top-level invest/redeem/schedule action targets.
+        Returns the InvestmentDTO, or None if there are none or the user cancels."""
+        if self._investment_use_cases is None:
+            return None
+        holdings = [
+            h for h in self._investment_use_cases.list_investments()
+            if h.asset_type != AssetType.SAVINGS_BOX
+        ]
+        if not holdings:
+            QMessageBox.information(self, t("common.info"), t("mainwindow.msg.no_holdings.body"))
+            return None
+        if len(holdings) == 1:
+            return holdings[0]
+        names = [h.name for h in holdings]
+        name, ok = QInputDialog.getItem(
+            self, title, t("mainwindow.invest.choose_holding"), names, 0, False
+        )
+        if not ok:
+            return None
+        return next((h for h in holdings if h.name == name), None)
+
+    def _open_invest_action(self, direction):
+        if self._investment_use_cases is None:
+            return
+        # Savings boxes have their own deposit/redeem flow in the Caixinhas tab;
+        # the global Invest/Redeem action targets only quantity-priced assets.
+        holdings = [
+            h for h in self._investment_use_cases.list_investments()
+            if h.asset_type != AssetType.SAVINGS_BOX
+        ]
+        if not holdings:
+            QMessageBox.information(self, t("common.info"), t("mainwindow.msg.no_holdings.body"))
+            return
+        accounts = self._account_use_cases.list_accounts()
+        dialog = InvestActionDialog(self, holdings, direction, accounts=accounts)
+        if not dialog.exec():
+            return
+        data = dialog.get_data()
+        self._investment_use_cases.add_transaction(CreateInvestmentTransactionDTO(
+            investment_id=data["investment_id"],
+            txn_type=data["txn_type"],
+            date=data["date"],
+            quantity=data["quantity"],
+            unit_price=data["unit_price"],
+            fees=data["fees"],
+            total=data["total"],
+            notes=data["notes"],
+        ))
+        self._investment_use_cases.record_snapshot()
+
+        # Move the money through a chosen finance account: investing debits it
+        # (an investment outflow), redeeming credits it (income).
+        moved = self._apply_account_movement(data, direction)
+        if moved:
+            self._refresh_all()
+        else:
+            self._refresh_investment_dashboard()
+
+    def _apply_account_movement(self, data, direction) -> bool:
+        account_id = data.get("account_id")
+        if not account_id or data["total"] <= 0:
+            return False
+        holding = self._investment_use_cases.get_investment(data["investment_id"])
+        name = holding.name if holding else ""
+        currency = holding.currency if holding else "BRL"
+        if direction == "redeem":
+            event_type = EventType.REDEMPTION
+            description = t("invest_action.redeem_description", name=name)
+        else:
+            event_type = EventType.INVESTMENT
+            description = t("invest_action.invest_description", name=name)
+        self._financial_event_use_cases.create_event(CreateFinancialEventDTO(
+            event_type=event_type,
+            event_date=date.fromisoformat(data["date"]),
+            description=description,
+            amount=data["total"],
+            account_id=account_id,
+            currency=currency,
+            notes=data["notes"],
+        ))
+        return True
+
+    def _schedule_investment(self):
+        holding = self._choose_holding(t("mainwindow.menu.schedule_investment"))
+        if holding is None:
+            return
+        dialog = InvestmentScheduleDialog(self, currency=holding.currency)
+        if dialog.exec():
+            data = dialog.get_data()
+            self._investment_use_cases.add_schedule(CreateInvestmentScheduleDTO(
+                investment_id=holding.id,
+                amount=data["amount"],
+                frequency=data["frequency"],
+                start_date=data["start_date"],
+                interval=data["interval"],
+                end_date=data["end_date"],
+                is_active=data["is_active"],
+            ))
+            # Materialize any now-due contributions immediately, then refresh.
+            self._investment_use_cases.generate_due_schedules()
+            self._investment_use_cases.record_snapshot()
+            self._refresh_investment_dashboard()
 
     def _pay_card(self):
         rows = self._credit_cards_table.selectionModel().selectedRows()
@@ -831,10 +1153,10 @@ class MainWindow(QMainWindow):
             self._refresh_counterparties()
             return dto
 
-        dialog = EventDialog(accounts, categories, counterparties, credit_cards, create_counterparty, self, event=occurrence)
+        dialog = EventDialog(accounts, categories, counterparties, credit_cards, create_counterparty, self, event=occurrence, investments=self._investment_list())
         if dialog.exec():
             data = dialog.get_data()
-            dto = CreateFinancialEventDTO(**data)
+            dto, _ = self._event_dto(data)
             self._recurring_event_use_cases.confirm_occurrence(
                 occurrence.recurring_event_id, occurrence.occurrence_date, dto
             )
@@ -853,6 +1175,29 @@ class MainWindow(QMainWindow):
         self._recurring_event_use_cases.skip_occurrence(recurring_event_id, occurrence_date)
         self._refresh_all()
 
+    def _event_dto(self, data):
+        """Split the EventDialog's investment_id out of the payload and build the
+        finance event DTO from the rest."""
+        investment_id = data.pop("investment_id", None)
+        return CreateFinancialEventDTO(**data), investment_id
+
+    def _sync_event_investment(self, event, investment_id):
+        """Keep the linked holding contribution in step with an investment event."""
+        if self._investment_use_cases is None:
+            return
+        etype = getattr(event.event_type, "value", event.event_type)
+        if str(etype) == "investment" and investment_id:
+            d = event.event_date
+            self._investment_use_cases.sync_event_contribution(
+                event.id, investment_id, event.amount,
+                d.isoformat() if hasattr(d, "isoformat") else str(d), event.notes,
+            )
+        else:
+            self._investment_use_cases.delete_event_contribution(event.id)
+
+    def _investment_list(self):
+        return self._investment_use_cases.list_investments() if self._investment_use_cases else []
+
     def _add_event(self):
         accounts = self._account_use_cases.list_accounts()
         categories = self._category_use_cases.list_categories()
@@ -864,11 +1209,12 @@ class MainWindow(QMainWindow):
             self._refresh_counterparties()
             return dto
 
-        dialog = EventDialog(accounts, categories, counterparties, credit_cards, create_counterparty, self)
+        dialog = EventDialog(accounts, categories, counterparties, credit_cards, create_counterparty, self, investments=self._investment_list())
         if dialog.exec():
             data = dialog.get_data()
-            dto = CreateFinancialEventDTO(**data)
-            self._financial_event_use_cases.create_event(dto)
+            dto, investment_id = self._event_dto(data)
+            event = self._financial_event_use_cases.create_event(dto)
+            self._sync_event_investment(event, investment_id)
             self._refresh_all()
 
     def _add_transfer(self):
@@ -888,7 +1234,7 @@ class MainWindow(QMainWindow):
             dialog.type_combo.setCurrentIndex(index)
         if dialog.exec():
             data = dialog.get_data()
-            dto = CreateFinancialEventDTO(**data)
+            dto, _ = self._event_dto(data)
             self._financial_event_use_cases.create_event(dto)
             self._refresh_all()
 
@@ -1049,11 +1395,19 @@ class MainWindow(QMainWindow):
             self._refresh_counterparties()
             return dto
 
-        dialog = EventDialog(accounts, categories, counterparties, credit_cards, create_counterparty, self, event=event)
+        linked_investment_id = (
+            self._investment_use_cases.get_event_investment_id(event_id)
+            if self._investment_use_cases else None
+        )
+        dialog = EventDialog(
+            accounts, categories, counterparties, credit_cards, create_counterparty, self,
+            event=event, investments=self._investment_list(), investment_id=linked_investment_id,
+        )
         if dialog.exec():
             data = dialog.get_data()
-            dto = CreateFinancialEventDTO(**data)
-            self._financial_event_use_cases.update_event(event_id, dto)
+            dto, investment_id = self._event_dto(data)
+            updated = self._financial_event_use_cases.update_event(event_id, dto)
+            self._sync_event_investment(updated or event, investment_id)
             self._refresh_all()
 
     def _edit_purchase(self, event_id):
@@ -1116,6 +1470,8 @@ class MainWindow(QMainWindow):
 
     def _delete_event_cascade(self, event_id):
         self._purchase_use_cases.delete_purchase_by_event(event_id)
+        if self._investment_use_cases is not None:
+            self._investment_use_cases.delete_event_contribution(event_id)
         self._financial_event_use_cases.delete_event(event_id)
 
     def _delete_event(self, event_id):
@@ -1170,14 +1526,20 @@ class MainWindow(QMainWindow):
             self._refresh_counterparties()
             return dto
 
+        linked_investment_id = (
+            self._investment_use_cases.get_event_investment_id(event_id)
+            if self._investment_use_cases else None
+        )
         dialog = EventDialog(
             accounts, categories, counterparties, credit_cards, create_counterparty, self,
-            event=event, duplicate=True,
+            event=event, duplicate=True, investments=self._investment_list(),
+            investment_id=linked_investment_id,
         )
         if dialog.exec():
             data = dialog.get_data()
-            dto = CreateFinancialEventDTO(**data)
-            self._financial_event_use_cases.create_event(dto)
+            dto, investment_id = self._event_dto(data)
+            new_event = self._financial_event_use_cases.create_event(dto)
+            self._sync_event_investment(new_event, investment_id)
             self._refresh_all()
 
     def _duplicate_purchase(self, event_id):
@@ -1296,7 +1658,18 @@ class MainWindow(QMainWindow):
         self._refresh_categories()
         self._refresh_counterparties()
         self._refresh_products()
+        self._refresh_shopping_list()
         self._refresh_credit_cards()
+        if hasattr(self, "_investment_dashboard"):
+            self._investment_dashboard.refresh()
+        if hasattr(self, "_holdings_widget"):
+            self._holdings_widget.refresh()
+        if hasattr(self, "_caixinhas_widget"):
+            self._caixinhas_widget.refresh()
+        if hasattr(self, "_predictions_widget"):
+            self._predictions_widget.refresh()
+        if hasattr(self, "_indicators_widget"):
+            self._indicators_widget.refresh()
         self._refresh_installments()
         self._refresh_recurring_events()
         self._refresh_dashboard()
@@ -1555,6 +1928,58 @@ class MainWindow(QMainWindow):
             [name for name, _ in entries],
             {t("mainwindow.products.total_spent"): [total for _, total in entries]},
         )
+
+    def _refresh_shopping_list(self):
+        horizon = self._shopping_horizon.currentData()
+        result = self._purchase_use_cases.get_shopping_suggestions(horizon)
+
+        product_names = {p.id: p.name for p in self._product_use_cases.list_products()}
+        counterparties = {c.id: c.name for c in self._counterparty_use_cases.list_counterparties()}
+
+        self._shopping_summary.setText(t(
+            "mainwindow.shopping.summary",
+            count=len(result.items),
+            total=format_currency(result.total_estimated_cost, "BRL"),
+        ))
+
+        self._shopping_table.setRowCount(len(result.items))
+        for i, s in enumerate(result.items):
+            self._shopping_table.setItem(
+                i, 0, QTableWidgetItem(product_names.get(s.product_id, s.product_id)))
+
+            qty = QTableWidgetItem(f"{s.typical_quantity:g} {s.unit}")
+            self._shopping_table.setItem(i, 1, qty)
+
+            self._shopping_table.setItem(
+                i, 2, QTableWidgetItem(format_currency(s.estimated_cost, "BRL")))
+
+            self._shopping_table.setItem(i, 3, QTableWidgetItem(t(
+                "mainwindow.shopping.every_days", days=round(s.avg_interval_days))))
+
+            due_item = QTableWidgetItem(self._shopping_due_text(s.days_until_due))
+            if s.days_until_due < 0:
+                due_item.setForeground(QColor(theme.EXPENSE))
+            self._shopping_table.setItem(i, 4, due_item)
+
+            if s.cheapest_unit_price is not None:
+                store = counterparties.get(s.cheapest_counterparty_id, "-") if s.cheapest_counterparty_id else "-"
+                best_text = f"{store} ({format_currency(s.cheapest_unit_price, 'BRL')})"
+            else:
+                best_text = "-"
+            self._shopping_table.setItem(i, 5, QTableWidgetItem(best_text))
+
+            self._shopping_table.setItem(i, 6, QTableWidgetItem(
+                t(f"mainwindow.shopping.confidence.{s.confidence}")))
+
+        self._shopping_table.resizeColumnsToContents()
+        self._shopping_table.resizeRowsToContents()
+
+    def _shopping_due_text(self, days_until_due: int) -> str:
+        if days_until_due < 0:
+            return t("mainwindow.shopping.due.overdue", days=-days_until_due)
+        if days_until_due == 0:
+            return t("mainwindow.shopping.due.today")
+        return t("mainwindow.shopping.due.in_days", days=days_until_due)
 
     def _refresh_credit_cards(self):
         cards = self._credit_card_use_cases.list_cards()

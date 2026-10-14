@@ -6,7 +6,8 @@ def create_tables(conn):
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             color TEXT,
-            parent_id TEXT
+            parent_id TEXT,
+            is_investment INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS accounts (
@@ -129,6 +130,7 @@ def create_tables(conn):
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             sort_order INTEGER NOT NULL DEFAULT 0,
+            context TEXT NOT NULL DEFAULT 'finance',
             created_at TEXT,
             updated_at TEXT
         );
@@ -139,6 +141,7 @@ def create_tables(conn):
             config_json TEXT NOT NULL DEFAULT '{}',
             row_span INTEGER NOT NULL DEFAULT 3,
             col_span INTEGER NOT NULL DEFAULT 6,
+            context TEXT NOT NULL DEFAULT 'finance',
             created_at TEXT,
             updated_at TEXT
         );
@@ -184,6 +187,77 @@ def create_tables(conn):
         CREATE INDEX IF NOT EXISTS idx_recurring_events_is_active ON recurring_events(is_active);
         CREATE INDEX IF NOT EXISTS idx_recurring_events_start_date ON recurring_events(start_date);
         CREATE INDEX IF NOT EXISTS idx_recurring_event_skips_recurring_event_id ON recurring_event_skips(recurring_event_id);
+
+        CREATE TABLE IF NOT EXISTS investments (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            asset_type TEXT NOT NULL,
+            currency TEXT NOT NULL DEFAULT 'BRL',
+            ticker TEXT,
+            account_id TEXT,
+            current_price REAL NOT NULL DEFAULT 0,
+            price_updated_at TEXT,
+            goal_amount REAL,
+            goal_date TEXT,
+            yield_rate REAL,
+            yield_index TEXT NOT NULL DEFAULT 'prefixed',
+            monthly_contribution REAL,
+            maturity_date TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            notes TEXT,
+            FOREIGN KEY(account_id) REFERENCES accounts(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS investment_transactions (
+            id TEXT PRIMARY KEY,
+            investment_id TEXT NOT NULL,
+            txn_type TEXT NOT NULL,
+            date TEXT NOT NULL,
+            quantity REAL NOT NULL DEFAULT 0,
+            unit_price REAL NOT NULL DEFAULT 0,
+            fees REAL NOT NULL DEFAULT 0,
+            total REAL NOT NULL DEFAULT 0,
+            notes TEXT,
+            financial_event_id TEXT,
+            FOREIGN KEY(investment_id) REFERENCES investments(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_investment_transactions_investment_id
+            ON investment_transactions(investment_id);
+        CREATE INDEX IF NOT EXISTS idx_investment_transactions_date
+            ON investment_transactions(date);
+
+        CREATE TABLE IF NOT EXISTS investment_schedules (
+            id TEXT PRIMARY KEY,
+            investment_id TEXT NOT NULL,
+            amount REAL NOT NULL,
+            frequency TEXT NOT NULL,
+            interval INTEGER NOT NULL DEFAULT 1,
+            start_date TEXT NOT NULL,
+            end_date TEXT,
+            last_generated_date TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY(investment_id) REFERENCES investments(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_investment_schedules_investment_id
+            ON investment_schedules(investment_id);
+
+        CREATE TABLE IF NOT EXISTS economic_indicator_values (
+            indicator_key TEXT NOT NULL,
+            date TEXT NOT NULL,
+            value REAL NOT NULL,
+            PRIMARY KEY(indicator_key, date)
+        );
+
+        CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+            id TEXT PRIMARY KEY,
+            date TEXT NOT NULL UNIQUE,
+            total_invested REAL NOT NULL DEFAULT 0,
+            total_market_value REAL NOT NULL DEFAULT 0,
+            total_gain REAL NOT NULL DEFAULT 0,
+            total_income REAL NOT NULL DEFAULT 0
+        );
 
         CREATE TABLE IF NOT EXISTS app_settings (
             key TEXT PRIMARY KEY,
@@ -309,4 +383,64 @@ def _migrate(conn):
         conn.execute(
             "ALTER TABLE installment_plans ADD COLUMN remainder_on_first INTEGER NOT NULL DEFAULT 0"
         )
+        conn.commit()
+
+    # 'context' namespaces dashboards/templates so the finance and investment
+    # dashboards never see each other's reports/templates (added with the
+    # customizable Investments screen).
+    cursor = conn.execute("PRAGMA table_info(dashboard_reports)")
+    report_columns = [row[1] for row in cursor.fetchall()]
+    if report_columns and "context" not in report_columns:
+        conn.execute(
+            "ALTER TABLE dashboard_reports ADD COLUMN context TEXT NOT NULL DEFAULT 'finance'"
+        )
+        conn.commit()
+
+    cursor = conn.execute("PRAGMA table_info(dashboard_widget_templates)")
+    template_columns = [row[1] for row in cursor.fetchall()]
+    if template_columns and "context" not in template_columns:
+        conn.execute(
+            "ALTER TABLE dashboard_widget_templates ADD COLUMN context TEXT NOT NULL DEFAULT 'finance'"
+        )
+        conn.commit()
+
+    # Savings-box goal fields (Caixinha/Cofrinho) on investments.
+    cursor = conn.execute("PRAGMA table_info(investments)")
+    investment_columns = [row[1] for row in cursor.fetchall()]
+    if investment_columns:
+        if "goal_amount" not in investment_columns:
+            conn.execute("ALTER TABLE investments ADD COLUMN goal_amount REAL")
+            conn.commit()
+        if "goal_date" not in investment_columns:
+            conn.execute("ALTER TABLE investments ADD COLUMN goal_date TEXT")
+            conn.commit()
+        if "yield_rate" not in investment_columns:
+            conn.execute("ALTER TABLE investments ADD COLUMN yield_rate REAL")
+            conn.commit()
+        if "yield_index" not in investment_columns:
+            conn.execute(
+                "ALTER TABLE investments ADD COLUMN yield_index TEXT NOT NULL DEFAULT 'prefixed'"
+            )
+            conn.commit()
+        if "monthly_contribution" not in investment_columns:
+            conn.execute("ALTER TABLE investments ADD COLUMN monthly_contribution REAL")
+            conn.commit()
+        if "maturity_date" not in investment_columns:
+            conn.execute("ALTER TABLE investments ADD COLUMN maturity_date TEXT")
+            conn.commit()
+
+    # Investment flag on categories: events in a flagged category are treated
+    # like investments (balance-only, excluded from income/expense and charts).
+    cursor = conn.execute("PRAGMA table_info(categories)")
+    category_columns = [row[1] for row in cursor.fetchall()]
+    if category_columns and "is_investment" not in category_columns:
+        conn.execute("ALTER TABLE categories ADD COLUMN is_investment INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+
+    # Link a contribution transaction back to the finance investment event that
+    # created it, so the two stay in sync.
+    cursor = conn.execute("PRAGMA table_info(investment_transactions)")
+    txn_columns = [row[1] for row in cursor.fetchall()]
+    if txn_columns and "financial_event_id" not in txn_columns:
+        conn.execute("ALTER TABLE investment_transactions ADD COLUMN financial_event_id TEXT")
         conn.commit()

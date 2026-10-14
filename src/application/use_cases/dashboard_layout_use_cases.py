@@ -147,6 +147,44 @@ class DashboardLayoutUseCases:
         ]
         self._repo.save_all(default_widgets)
 
+    def seed_investment_default_layout_if_empty(self, dashboard_id: str = "investments_default") -> None:
+        if self._repo.find_all(dashboard_id):
+            return
+        from src.application.investment_presets import (
+            DEFAULT_INVESTMENT_LAYOUT, clone_investment_preset_config, find_investment_preset,
+        )
+
+        grid_columns = 12
+        next_free_row = [0] * grid_columns
+        widgets = []
+        for sort_order, preset_id in enumerate(DEFAULT_INVESTMENT_LAYOUT):
+            preset = find_investment_preset(preset_id)
+            if preset is None:
+                continue
+            rs, cs = preset.default_row_span, preset.default_col_span
+            best_row, best_col = None, None
+            for start_col in range(0, grid_columns - cs + 1):
+                candidate = max(next_free_row[start_col:start_col + cs])
+                if best_row is None or candidate < best_row:
+                    best_row, best_col = candidate, start_col
+            best_row = best_row or 0
+            best_col = best_col or 0
+            config = clone_investment_preset_config(preset)
+            config["title_key"] = preset.display_title_key
+            widgets.append(DashboardWidget(
+                kind=DashboardWidgetKind.GENERIC,
+                title=preset.title,
+                grid_row=best_row, grid_col=best_col,
+                grid_row_span=rs, grid_col_span=cs,
+                sort_order=sort_order,
+                config=config,
+                source_preset_id=preset.preset_id,
+                dashboard_id=dashboard_id,
+            ))
+            for c in range(best_col, best_col + cs):
+                next_free_row[c] = best_row + rs
+        self._repo.save_all(widgets)
+
     def _to_dto(self, entity: DashboardWidget) -> DashboardWidgetDTO:
         return DashboardWidgetDTO(
             id=entity.id,

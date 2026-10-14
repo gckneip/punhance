@@ -12,13 +12,14 @@ from src.presentation.widgets.currency_spin_box import CurrencySpinBox
 from src.presentation.i18n import t, CURRENCIES
 from src.presentation.labels import event_type_label, account_type_label
 
-TYPE_CHOICES = ["expense", "income", "transfer"]
+TYPE_CHOICES = ["expense", "income", "transfer", "investment"]
 
 
 class EventDialog(QDialog):
-    def __init__(self, accounts, categories, counterparties, credit_cards, on_create_counterparty, parent=None, event=None, duplicate=False):
+    def __init__(self, accounts, categories, counterparties, credit_cards, on_create_counterparty, parent=None, event=None, duplicate=False, investments=None, investment_id=None):
         super().__init__(parent)
         self._on_create_counterparty = on_create_counterparty
+        self._investments = list(investments or [])
         if duplicate:
             self.setWindowTitle(t("event_dialog.title.duplicate"))
         elif event:
@@ -77,18 +78,42 @@ class EventDialog(QDialog):
         self.dest_label.setVisible(False)
         form.addRow(self.dest_label, self.dest_account_combo)
 
+        # Which registered holding an investment event contributes to.
+        self.investment_combo = QComboBox()
+        self.investment_combo.addItem(t("common.none"), None)
+        for inv in self._investments:
+            self.investment_combo.addItem(inv.name, inv.id)
+        self.investment_combo.setVisible(False)
+        self.investment_label = QLabel(t("event_dialog.investment_asset"))
+        self.investment_label.setVisible(False)
+        form.addRow(self.investment_label, self.investment_combo)
+
         def _on_type_changed(*_):
-            is_transfer = (self.type_combo.currentData() == "transfer")
+            current = self.type_combo.currentData()
+            is_transfer = (current == "transfer")
+            is_investment = (current == "investment")
+            is_card_payment = (current == "card_payment")
             self.dest_account_combo.setVisible(is_transfer)
             self.dest_label.setVisible(is_transfer)
-            self.selector.set_mode(
-                AccountCreditCardSelector.MODE_ACCOUNT_ONLY if is_transfer
-                else AccountCreditCardSelector.MODE_EITHER
-            )
-            self._selector_label.setText(
-                t("event_dialog.account_source") if is_transfer
-                else t("event_dialog.account_or_card")
-            )
+            self.investment_combo.setVisible(is_investment)
+            self.investment_label.setVisible(is_investment)
+            if is_transfer:
+                mode = AccountCreditCardSelector.MODE_ACCOUNT_ONLY
+            elif is_card_payment:
+                # A card payment leaves a real account AND pays down a card:
+                # both sides are required, just like a bank transfer has a
+                # source and a destination.
+                mode = AccountCreditCardSelector.MODE_BOTH
+            else:
+                mode = AccountCreditCardSelector.MODE_EITHER
+            self.selector.set_mode(mode)
+            if is_transfer:
+                label = t("event_dialog.account_source")
+            elif is_card_payment:
+                label = t("event_dialog.account_and_card")
+            else:
+                label = t("event_dialog.account_or_card")
+            self._selector_label.setText(label)
         self._on_type_changed = _on_type_changed
         self.type_combo.currentIndexChanged.connect(_on_type_changed)
         _on_type_changed()
@@ -134,6 +159,10 @@ class EventDialog(QDialog):
             if cp_index >= 0:
                 self.counterparty_combo.setCurrentIndex(cp_index)
             self.notes_edit.setText(event.notes or "")
+            if investment_id is not None:
+                inv_index = self.investment_combo.findData(investment_id)
+                if inv_index >= 0:
+                    self.investment_combo.setCurrentIndex(inv_index)
             _on_type_changed()
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -188,4 +217,8 @@ class EventDialog(QDialog):
             "counterparty_id": self.counterparty_combo.currentData(),
             "currency": self.currency_combo.currentText(),
             "notes": self.notes_edit.text().strip() or None,
+            "investment_id": (
+                self.investment_combo.currentData()
+                if current_type == "investment" else None
+            ),
         }

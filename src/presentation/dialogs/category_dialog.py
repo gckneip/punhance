@@ -1,7 +1,7 @@
 from typing import List
 from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QComboBox, QDialogButtonBox, QVBoxLayout,
-    QMessageBox,
+    QMessageBox, QCheckBox,
 )
 from src.application.dto.category_dto import CategoryDTO
 from src.presentation.i18n import t
@@ -32,6 +32,10 @@ class CategoryDialog(QDialog):
             self.parent_combo.addItem(cat.name, cat.id)
         form.addRow(t("category_dialog.parent"), self.parent_combo)
 
+        self.investment_check = QCheckBox(t("category_dialog.is_investment"))
+        self.investment_check.setToolTip(t("category_dialog.is_investment_tooltip"))
+        form.addRow("", self.investment_check)
+
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -46,6 +50,7 @@ class CategoryDialog(QDialog):
                 index = self.parent_combo.findData(category.parent_id)
                 if index >= 0:
                     self.parent_combo.setCurrentIndex(index)
+            self.investment_check.setChecked(getattr(category, "is_investment", False))
 
     def _validate_and_accept(self):
         if not self.name_edit.text().strip():
@@ -58,4 +63,5 @@ class CategoryDialog(QDialog):
             "name": self.name_edit.text().strip(),
             "color": self.color_edit.text().strip() or None,
             "parent_id": self.parent_combo.currentData(),
+            "is_investment": self.investment_check.isChecked(),
         }

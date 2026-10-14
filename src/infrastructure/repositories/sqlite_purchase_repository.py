@@ -3,7 +3,9 @@ from typing import List, Optional
 from datetime import date
 from src.domain.entities.purchase import Purchase, PaymentMethod
 from src.domain.entities.purchase_item import PurchaseItem
-from src.domain.repositories.purchase_repository import PurchaseRepository
+from src.domain.repositories.purchase_repository import (
+    PurchaseRepository, ProductPurchaseRecord,
+)
 
 
 class SQLitePurchaseRepository(PurchaseRepository):
@@ -129,6 +131,32 @@ class SQLitePurchaseRepository(PurchaseRepository):
         )
         return [
             (row["product_id"], row["unit_price"], row["counterparty_id"])
+            for row in cursor.fetchall()
+        ]
+
+    def find_product_purchase_history(self) -> List[ProductPurchaseRecord]:
+        cursor = self._conn.execute(
+            """SELECT purchase_items.product_id, financial_events.event_date,
+                      purchase_items.quantity, purchase_items.unit,
+                      purchase_items.unit_price, purchase_items.total_price,
+                      purchases.counterparty_id
+               FROM purchase_items
+               JOIN purchases ON purchase_items.purchase_id = purchases.id
+               JOIN financial_events ON purchases.financial_event_id = financial_events.id
+               WHERE purchase_items.product_id IS NOT NULL
+                 AND financial_events.event_date IS NOT NULL
+               ORDER BY purchase_items.product_id, financial_events.event_date"""
+        )
+        return [
+            ProductPurchaseRecord(
+                product_id=row["product_id"],
+                event_date=date.fromisoformat(row["event_date"]),
+                quantity=row["quantity"],
+                unit=row["unit"],
+                unit_price=row["unit_price"],
+                total_price=row["total_price"],
+                counterparty_id=row["counterparty_id"],
+            )
             for row in cursor.fetchall()
         ]
 

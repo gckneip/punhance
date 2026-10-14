@@ -120,6 +120,15 @@ def _to_qdate(value) -> QDate:
         value = value.date()
     if isinstance(value, date):
         return QDate(value.year, value.month, value.day)
+    if isinstance(value, str):
+        # Accept ISO strings ("YYYY-MM-DD" or full "YYYY-MM-DDTHH:MM:SS"); some
+        # entities (e.g. investment transactions, cached indicators) store dates
+        # as ISO strings rather than date objects.
+        try:
+            parsed = date.fromisoformat(value[:10])
+        except ValueError:
+            raise TypeError(f"Unsupported date value: {value!r}")
+        return QDate(parsed.year, parsed.month, parsed.day)
     raise TypeError(f"Unsupported date value: {value!r}")
 
 

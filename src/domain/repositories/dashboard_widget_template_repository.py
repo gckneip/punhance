@@ -13,7 +13,7 @@ class DashboardWidgetTemplateRepository(ABC):
         pass
 
     @abstractmethod
-    def find_all(self) -> List[DashboardWidgetTemplate]:
+    def find_all(self, context: Optional[str] = None) -> List[DashboardWidgetTemplate]:
         pass
 
     @abstractmethod

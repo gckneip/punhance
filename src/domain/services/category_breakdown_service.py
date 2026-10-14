@@ -24,14 +24,32 @@ class CategoryBreakdown:
     total_expenses: float = 0.0
 
 
+@dataclass
+class CategoryEventRow:
+    """A single event contributing to a category, for the drill-down modal."""
+    event_date: date
+    description: str
+    event_type: EventType
+    amount: float
+    currency: str
+    is_income: bool
+
+
 class CategoryBreakdownService:
     def __init__(
         self,
         financial_event_repository: FinancialEventRepository,
         purchase_repository: Optional[PurchaseRepository] = None,
+        category_repository=None,
     ):
         self._financial_event_repository = financial_event_repository
         self._purchase_repository = purchase_repository
+        self._category_repository = category_repository
+
+    def _investment_category_ids(self):
+        if self._category_repository is None:
+            return set()
+        return self._category_repository.find_investment_ids()
 
     def get_breakdown(
         self,
@@ -70,8 +88,11 @@ class CategoryBreakdownService:
         )
 
         grouped: Dict[Optional[str], CategoryBreakdownItem] = {}
+        investment_cats = self._investment_category_ids()
 
         def add(cat_id: Optional[str], event_type: EventType, amount: float) -> None:
+            if cat_id in investment_cats:
+                return  # investment-flagged categories are excluded from the breakdown
             if cat_id not in grouped:
                 grouped[cat_id] = CategoryBreakdownItem(
                     category_id=cat_id,
@@ -85,9 +106,10 @@ class CategoryBreakdownService:
             if event_type in (EventType.INCOME, EventType.REFUND):
                 item.total_income += amount
             elif event_type in (
-                # CARD_PAYMENT/TRANSFER are filtered out before reaching here.
+                # CARD_PAYMENT/TRANSFER/INVESTMENT/REDEMPTION are filtered out
+                # before reaching here.
                 EventType.EXPENSE, EventType.PURCHASE,
-                EventType.LOAN_PAYMENT, EventType.INVESTMENT,
+                EventType.LOAN_PAYMENT,
             ):
                 item.total_expenses += amount
             item.net = item.total_income - item.total_expenses
@@ -100,7 +122,10 @@ class CategoryBreakdownService:
             #    is already recorded (with real categories) by the individual
             #    card purchases, so counting it here double-counts and dumps an
             #    uncategorized lump into the "no category" slice.
-            if e.event_type in (EventType.TRANSFER, EventType.CARD_PAYMENT):
+            if e.event_type in (
+                EventType.TRANSFER, EventType.CARD_PAYMENT,
+                EventType.INVESTMENT, EventType.REDEMPTION,
+            ):
                 continue
 
             items = []
@@ -128,3 +153,56 @@ class CategoryBreakdownService:
         breakdown.total_income = sum(i.total_income for i in breakdown.items)
         breakdown.total_expenses = sum(i.total_expenses for i in breakdown.items)
         return breakdown
+
+    def get_events_for_category(
+        self,
+        date_from: date,
+        date_to: date,
+        category_id: Optional[str],
+    ) -> List[CategoryEventRow]:
+        """Individual events that contribute to a single category over
+        [date_from, date_to), for the category drill-down modal.
+
+        Mirrors the exclusion and purchase-item-splitting rules of
+        :meth:`_breakdown_for_range` so the modal's rows reconcile with the
+        totals shown for the category. ``category_id=None`` selects the
+        "unassigned" bucket.
+        """
+        events = self._financial_event_repository.find_all(
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+        rows: List[CategoryEventRow] = []
+        for e in events:
+            if e.event_type in (
+                EventType.TRANSFER, EventType.CARD_PAYMENT,
+                EventType.INVESTMENT, EventType.REDEMPTION,
+            ):
+                continue
+
+            is_income = e.event_type in (EventType.INCOME, EventType.REFUND)
+
+            items = []
+            if e.event_type == EventType.PURCHASE and self._purchase_repository is not None:
+                purchase = self._purchase_repository.find_by_financial_event(e.id)
+                if purchase is not None:
+                    items = self._purchase_repository.find_items_by_purchase(purchase.id)
+
+            if items:
+                # A purchase is split across its items' categories; sum the part
+                # that lands in the requested category (one row per event).
+                matched = [it for it in items if it.category_id == category_id]
+                if not matched:
+                    continue
+                amount = sum(it.total_price for it in matched)
+                rows.append(CategoryEventRow(
+                    e.event_date, e.description, e.event_type, amount, e.currency, is_income,
+                ))
+            elif e.category_id == category_id:
+                rows.append(CategoryEventRow(
+                    e.event_date, e.description, e.event_type, e.amount, e.currency, is_income,
+                ))
+
+        rows.sort(key=lambda r: r.event_date, reverse=True)
+        return rows
