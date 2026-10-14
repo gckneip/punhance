@@ -36,9 +36,11 @@ class AccountSummaryService:
         self,
         financial_event_repository: FinancialEventRepository,
         account_repository: AccountRepository,
+        category_repository=None,
     ):
         self._event_repo = financial_event_repository
         self._account_repo = account_repository
+        self._category_repo = category_repository
 
     def get_summary(
         self,
@@ -47,6 +49,9 @@ class AccountSummaryService:
     ) -> AccountSummary:
         accounts = self._account_repo.find_all()
         events = self._event_repo.find_all(date_from=date_from, date_to=date_to)
+        investment_cats = (
+            self._category_repo.find_investment_ids() if self._category_repo else set()
+        )
 
         agg: Dict[str, Dict[str, float]] = {}
 
@@ -60,6 +65,15 @@ class AccountSummaryService:
             return agg[key]
 
         for e in events:
+            if e.category_id in investment_cats and e.event_type != EventType.TRANSFER:
+                # An investment-flagged category makes the event balance-only,
+                # like an investment: income-like credits it, everything else
+                # (expense-like) debits it, but neither is income or spending.
+                if e.event_type in (EventType.INCOME, EventType.REFUND, EventType.REDEMPTION):
+                    bucket(e.account_id)["transfer_in"] += e.amount
+                elif not e.credit_card_id:
+                    bucket(e.account_id)["transfer_out"] += e.amount
+                continue
             if e.event_type == EventType.TRANSFER:
                 # A transfer moves money between the user's own accounts. It
                 # affects each account's balance but is not income or spending,
@@ -69,11 +83,19 @@ class AccountSummaryService:
                 bucket(e.destination_account_id)["transfer_in"] += e.amount
             elif e.event_type in (EventType.INCOME, EventType.REFUND):
                 bucket(e.account_id)["income"] += e.amount
+            elif e.event_type == EventType.INVESTMENT:
+                # Investing moves cash into a holding: like a transfer it lowers
+                # the account balance but is not spending.
+                bucket(e.account_id)["transfer_out"] += e.amount
+            elif e.event_type == EventType.REDEMPTION:
+                # Redeeming brings cash back from a holding: raises the balance
+                # but is not income.
+                bucket(e.account_id)["transfer_in"] += e.amount
             elif e.event_type == EventType.CARD_PAYMENT:
                 bucket(e.account_id)["expenses"] += e.amount
             elif e.event_type in (
                 EventType.EXPENSE, EventType.PURCHASE,
-                EventType.LOAN_PAYMENT, EventType.INVESTMENT,
+                EventType.LOAN_PAYMENT,
             ):
                 if e.credit_card_id:
                     # Charged to a credit card, not a bank account - this

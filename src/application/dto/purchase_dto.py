@@ -71,6 +71,31 @@ class ProductEventDTO:
 
 
 @dataclass
+class ShoppingSuggestionDTO:
+    product_id: str
+    typical_quantity: float
+    unit: str
+    estimated_unit_price: float
+    estimated_cost: float
+    avg_interval_days: float
+    occurrences: int
+    last_purchase_date: date
+    predicted_next_date: date
+    days_until_due: int
+    confidence: str
+    cheapest_counterparty_id: Optional[str] = None
+    cheapest_unit_price: Optional[float] = None
+
+
+@dataclass
+class ShoppingListDTO:
+    horizon: str
+    reference_date: date
+    items: List[ShoppingSuggestionDTO] = field(default_factory=list)
+    total_estimated_cost: float = 0.0
+
+
+@dataclass
 class InstallmentDTO:
     id: str
     installment_plan_id: str

@@ -11,8 +11,10 @@ from src.domain.repositories.purchase_repository import PurchaseRepository
 from src.domain.repositories.installment_plan_repository import InstallmentPlanRepository
 from src.domain.repositories.installment_repository import InstallmentRepository
 from src.domain.services.installment_service import InstallmentService
+from src.domain.services.shopping_suggestion_service import ShoppingSuggestionService
 from src.application.dto.purchase_dto import (
     CreatePurchaseDTO, PurchaseDTO, PurchaseItemDTO, InstallmentDTO, ProductEventDTO,
+    ShoppingSuggestionDTO, ShoppingListDTO,
 )
 
 
@@ -48,6 +50,7 @@ class PurchaseUseCases:
         self._installment_repo = installment_repository
         self._installment_service = installment_service
         self._conn = conn
+        self._shopping_service = ShoppingSuggestionService(purchase_repository)
 
     def delete_purchase_by_event(self, financial_event_id: str) -> None:
         purchase = self._purchase_repo.find_by_financial_event(financial_event_id)
@@ -319,6 +322,38 @@ class PurchaseUseCases:
                 financial_event_id=purchase.financial_event_id if purchase else None,
             ))
         return result
+
+    def get_shopping_suggestions(
+        self, horizon: str = "monthly", reference_date: Optional[date] = None
+    ) -> ShoppingListDTO:
+        """Suggested shopping list for the given horizon ("weekly"/"monthly").
+
+        Names are resolved by the presentation layer from the product/
+        counterparty ids carried here, mirroring the Products tab."""
+        result = self._shopping_service.suggest(horizon, reference_date)
+        return ShoppingListDTO(
+            horizon=result.horizon,
+            reference_date=result.reference_date,
+            total_estimated_cost=result.total_estimated_cost,
+            items=[
+                ShoppingSuggestionDTO(
+                    product_id=s.product_id,
+                    typical_quantity=s.typical_quantity,
+                    unit=s.unit,
+                    estimated_unit_price=s.estimated_unit_price,
+                    estimated_cost=s.estimated_cost,
+                    avg_interval_days=s.avg_interval_days,
+                    occurrences=s.occurrences,
+                    last_purchase_date=s.last_purchase_date,
+                    predicted_next_date=s.predicted_next_date,
+                    days_until_due=s.days_until_due,
+                    confidence=s.confidence,
+                    cheapest_counterparty_id=s.cheapest_counterparty_id,
+                    cheapest_unit_price=s.cheapest_unit_price,
+                )
+                for s in result.items
+            ],
+        )
 
     def get_multi_installment_map(self) -> Dict[str, List[InstallmentDTO]]:
         plans = self._plan_repo.find_all()
