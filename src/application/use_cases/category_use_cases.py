@@ -13,6 +13,7 @@ class CategoryUseCases:
             name=dto.name,
             color=dto.color,
             parent_id=dto.parent_id,
+            is_investment=dto.is_investment,
         )
         self._category_repository.save(category)
         return self._to_dto(category)
@@ -24,6 +25,7 @@ class CategoryUseCases:
         category.name = dto.name
         category.color = dto.color
         category.parent_id = dto.parent_id
+        category.is_investment = dto.is_investment
         self._category_repository.save(category)
         return self._to_dto(category)
 
@@ -40,4 +42,5 @@ class CategoryUseCases:
             name=category.name,
             color=category.color,
             parent_id=category.parent_id,
+            is_investment=category.is_investment,
         )
