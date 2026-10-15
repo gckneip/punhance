@@ -47,12 +47,10 @@ def test_date_from_excludes_earlier_occurrences():
     assert occ == [date(2026, 3, 15), date(2026, 4, 15)]
 
 
-def test_month_end_day_drifts_down_after_clamping():
-    # Documents CURRENT behavior: stepping is cumulative (each step adds a month
-    # to the *previous* occurrence), so once Jan 31 clamps to Feb 28 the day
-    # never recovers -> Mar 28, Apr 28. A start-anchored stepper would instead
-    # give Mar 31 / Apr 30. See the "month-end day drift" note flagged to the
-    # team; update this expectation if that is fixed.
+def test_month_end_day_clamps_per_month_without_drift():
+    # Occurrences are anchored to the start day, so a 31st schedule clamps to
+    # each month's last valid day and recovers the 31st where the month allows
+    # (no cumulative drift down to the 28th).
     occ = occurrences_between(
         MONTHLY, 1,
         start=date(2026, 1, 31),
@@ -62,8 +60,8 @@ def test_month_end_day_drifts_down_after_clamping():
     assert occ == [
         date(2026, 1, 31),
         date(2026, 2, 28),   # 2026 is not a leap year
-        date(2026, 3, 28),   # drifted: NOT Mar 31
-        date(2026, 4, 28),   # drifted: NOT Apr 30
+        date(2026, 3, 31),   # recovered
+        date(2026, 4, 30),   # clamped to April's last day
     ]
 
 
