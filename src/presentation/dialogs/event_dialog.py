@@ -12,7 +12,7 @@ from src.presentation.widgets.currency_spin_box import CurrencySpinBox
 from src.presentation.i18n import t, CURRENCIES
 from src.presentation.labels import event_type_label, account_type_label
 
-TYPE_CHOICES = ["expense", "income", "transfer", "investment"]
+TYPE_CHOICES = ["expense", "income", "transfer", "investment", "redemption"]
 
 
 class EventDialog(QDialog):

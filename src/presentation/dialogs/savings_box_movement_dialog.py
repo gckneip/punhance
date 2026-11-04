@@ -50,10 +50,13 @@ class SavingsBoxMovementDialog(QDialog):
 
         # Which finance account the cash flows through: a deposit debits it (an
         # outflow into savings), a withdrawal credits it (money coming back).
+        # A destination account is required so the cash always lands on / leaves
+        # an account — there is deliberately no "(no account)" option here, which
+        # used to let a redemption silently move the box balance without ever
+        # crediting any conta.
         self.account_combo = None
         if self._accounts:
             self.account_combo = QComboBox()
-            self.account_combo.addItem(t("invest_action.no_account"), None)
             for acc in self._accounts:
                 self.account_combo.addItem(acc.name, acc.id)
             account_label = (

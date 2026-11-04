@@ -328,19 +328,32 @@ class EventsTableWidget(QWidget):
         self.entry_added.emit()
 
 
+# Share of monthly income we aim to put into investments. Shown next to the
+# Investment Rate title as a goal (e.g. "/25%") and used to colour the value.
+INVESTMENT_RATE_TARGET = 25.0
+
+
 class SavingsRateStatWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self._value_label = QLabel("0.0%")
-        layout.addWidget(make_stat_card(t("builtin.savings_rate"), self._value_label))
+        title = f"{t('builtin.investment_rate')}  /{INVESTMENT_RATE_TARGET:g}%"
+        layout.addWidget(make_stat_card(title, self._value_label))
 
     def set_rate(self, income: float, invested: float):
-        # Savings Rate = share of income put into investments this month
+        # Investment Rate = share of income put into investments this month
         # (net of redemptions). Money merely left in cash is not counted.
         rate = 0.0
         if income > 0:
             rate = (invested / income) * 100
         self._value_label.setText(f"{i18n.format_number(rate, 1)}%")
-        self._value_label.setStyleSheet(f"color: {theme.INCOME if rate >= 0 else theme.EXPENSE};")
+        if rate < 0:
+            color = theme.EXPENSE
+        elif rate >= INVESTMENT_RATE_TARGET:
+            color = theme.INCOME
+        else:
+            # On track but short of the goal: muted, not an error.
+            color = theme.TEXT_SECONDARY
+        self._value_label.setStyleSheet(f"color: {color};")

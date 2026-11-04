@@ -69,6 +69,8 @@ from src.presentation.widgets.installments_widget import InstallmentsWidget
 from src.presentation.widgets.calendar_widget import CalendarWidget
 from src.presentation.widgets.category_breakdown_widget import CategoryBreakdownWidget
 from src.presentation.widgets.account_summary_widget import AccountSummaryWidget
+from src.presentation.widgets.account_detail_widget import AccountDetailWidget
+from src.presentation.widgets.credit_card_detail_widget import CreditCardDetailWidget
 from src.presentation.widgets.nav_host import TabNavHost, SidebarNavHost
 from src.presentation.widgets.even_columns_table import EvenColumnsTableWidget
 from src.presentation import icons, theme, i18n
@@ -402,13 +404,20 @@ class MainWindow(QMainWindow):
         self._events_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._events_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._events_table.setAlternatingRowColors(True)
+        self._events_table.cellDoubleClicked.connect(self._on_event_row_activated)
         layout.addWidget(self._events_table)
 
         self._tabs.addTab(tab, icons.icon("fa6s.list"), t("mainwindow.tab.events"))
 
     def _build_accounts_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
+        # The Accounts tab hosts an inner stack: page 0 is the accounts listing,
+        # page 1 is the per-account detail screen. Opening a detail swaps the
+        # inner page without leaving the tab, so the nav bar stays put with
+        # "Accounts" still selected; a Back button returns to the listing.
+        self._accounts_stack = QStackedWidget()
+
+        self._accounts_page = QWidget()
+        layout = QVBoxLayout(self._accounts_page)
 
         btn_row = QHBoxLayout()
         btn = QPushButton(t("mainwindow.btn.add_account"))
@@ -430,7 +439,10 @@ class MainWindow(QMainWindow):
         self._accounts_table.setAlternatingRowColors(True)
         layout.addWidget(self._accounts_table)
 
-        self._tabs.addTab(tab, icons.icon("fa6s.wallet"), t("mainwindow.tab.accounts"))
+        self._accounts_stack.addWidget(self._accounts_page)
+        self._build_account_detail_screen()
+
+        self._tabs.addTab(self._accounts_stack, icons.icon("fa6s.wallet"), t("mainwindow.tab.accounts"))
 
     def _build_categories_tab(self):
         tab = QWidget()
@@ -581,7 +593,13 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(tab, icons.icon("fa6s.cart-shopping"), t("mainwindow.tab.shopping_list"))
 
     def _build_credit_cards_tab(self):
+        # Like the Accounts tab, the Credit Cards tab hosts an inner stack:
+        # page 0 is the cards listing, page 1 is the per-card detail screen.
+        # Opening a detail swaps the inner page without leaving the tab.
+        self._credit_cards_stack = QStackedWidget()
+
         tab = QWidget()
+        self._credit_cards_page = tab
         layout = QVBoxLayout(tab)
 
         btn_row = QHBoxLayout()
@@ -611,9 +629,47 @@ class MainWindow(QMainWindow):
         self._credit_cards_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._credit_cards_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._credit_cards_table.setAlternatingRowColors(True)
+        # Double-clicking a card row opens its detail screen.
+        self._credit_cards_table.cellDoubleClicked.connect(self._on_credit_card_row_activated)
         layout.addWidget(self._credit_cards_table)
 
-        self._tabs.addTab(tab, icons.icon("fa6s.credit-card"), t("mainwindow.tab.credit_cards"))
+        self._credit_cards_stack.addWidget(self._credit_cards_page)
+        self._build_credit_card_detail_screen()
+
+        self._tabs.addTab(self._credit_cards_stack, icons.icon("fa6s.credit-card"), t("mainwindow.tab.credit_cards"))
+
+    def _build_credit_card_detail_screen(self):
+        # NOT a tab/nav entry: a second page of the Credit Cards tab's inner
+        # stack, reachable only via the "view" action on a card row.
+        self._credit_card_detail_widget = CreditCardDetailWidget(
+            self._credit_card_use_cases,
+            self._financial_event_use_cases,
+            self._category_use_cases,
+            self._counterparty_use_cases,
+            self._recurring_event_use_cases,
+        )
+        self._credit_card_detail_widget.back_requested.connect(self._close_credit_card_detail)
+        self._credit_card_detail_widget.edit_event_requested.connect(self._edit_event)
+        self._credit_card_detail_widget.edit_recurring_requested.connect(self._edit_recurring_event)
+        self._credit_card_detail_widget.pay_card_requested.connect(self._pay_card_by_id)
+        self._credit_cards_stack.addWidget(self._credit_card_detail_widget)
+
+    def _on_credit_card_row_activated(self, row, _col):
+        item = self._credit_cards_table.item(row, 0)
+        if item is None:
+            return
+        card_id = item.data(Qt.UserRole)
+        if card_id:
+            self._open_credit_card_detail(card_id)
+
+    def _open_credit_card_detail(self, card_id):
+        self._credit_card_detail_widget.set_card(card_id)
+        # Stay on the Credit Cards tab, just swap its inner page to the detail.
+        self._tabs.setCurrentWidget(self._credit_cards_stack)
+        self._credit_cards_stack.setCurrentWidget(self._credit_card_detail_widget)
+
+    def _close_credit_card_detail(self):
+        self._credit_cards_stack.setCurrentWidget(self._credit_cards_page)
 
     def _build_investment_tabs(self):
         # Investments mode: a customizable analytics dashboard ("Painel"), a
@@ -727,6 +783,36 @@ class MainWindow(QMainWindow):
                 self._account_summary_service,
             )
             self._tabs.addTab(self._account_summary_widget, icons.icon("fa6s.chart-line"), t("mainwindow.tab.account_summary"))
+
+    def _build_account_detail_screen(self):
+        # NOT a tab/nav entry: a second page of the Accounts tab's inner stack,
+        # reachable only via the "view" action on an account row.
+        if self._account_summary_service:
+            self._account_detail_widget = AccountDetailWidget(
+                self._account_summary_service,
+                self._financial_event_use_cases,
+                self._account_use_cases,
+                self._category_use_cases,
+                self._counterparty_use_cases,
+                self._recurring_event_use_cases,
+            )
+            self._account_detail_widget.back_requested.connect(self._close_account_detail)
+            self._account_detail_widget.edit_event_requested.connect(self._edit_event)
+            self._account_detail_widget.edit_recurring_requested.connect(self._edit_recurring_event)
+            self._accounts_stack.addWidget(self._account_detail_widget)
+
+    def _open_account_detail(self, account_id):
+        if not hasattr(self, "_account_detail_widget"):
+            return
+        self._account_detail_widget.set_account(account_id)
+        # Stay on the Accounts tab (nav keeps "Accounts" selected), just swap
+        # its inner page to the detail view.
+        self._tabs.setCurrentWidget(self._accounts_stack)
+        self._accounts_stack.setCurrentWidget(self._account_detail_widget)
+
+    def _close_account_detail(self):
+        # Back to the accounts listing, without leaving the Accounts tab.
+        self._accounts_stack.setCurrentWidget(self._accounts_page)
 
     def _add_account(self):
         dialog = AccountDialog(self)
@@ -907,10 +993,13 @@ class MainWindow(QMainWindow):
     # ---- Investments ----------------------------------------------------
     def _on_holdings_changed(self):
         # A holding was mutated in the Carteira tab -> record a fresh portfolio
-        # snapshot and refresh the analytics dashboard.
+        # snapshot and refresh. A savings-box deposit/withdrawal also creates a
+        # finance event against an account, so refresh the accounts/finance views
+        # too (not just the investment dashboard), otherwise a redemption would
+        # not show up on the Accounts screen until the next full refresh.
         if self._investment_use_cases is not None:
             self._investment_use_cases.record_snapshot()
-        self._refresh_investment_dashboard()
+        self._refresh_all()
 
     def _refresh_investment_dashboard(self):
         if hasattr(self, "_investment_dashboard"):
@@ -1037,10 +1126,13 @@ class MainWindow(QMainWindow):
         if row >= len(cards):
             return
 
-        card = cards[row]
-        status = self._credit_card_use_cases.get_status(card.id)
+        self._pay_card_by_id(cards[row].id)
+
+    def _pay_card_by_id(self, card_id):
+        status = self._credit_card_use_cases.get_status(card_id)
         if status is None:
             return
+        card = status.card
 
         if status.current_debt <= 0:
             QMessageBox.information(self, t("common.info"), t("mainwindow.msg.no_debt.body"))
@@ -1229,7 +1321,10 @@ class MainWindow(QMainWindow):
             return dto
 
         dialog = EventDialog(accounts, categories, counterparties, credit_cards, create_counterparty, self)
-        index = dialog.type_combo.findText("transfer")
+        # The type combo shows translated labels but stores the raw event-type
+        # value as item data, so match on data (not the display text, which is
+        # localized and would never equal "transfer").
+        index = dialog.type_combo.findData("transfer")
         if index >= 0:
             dialog.type_combo.setCurrentIndex(index)
         if dialog.exec():
@@ -1374,6 +1469,21 @@ class MainWindow(QMainWindow):
                 + "\n".join(f"- {w}" for w in result.warnings)
             )
         QMessageBox.information(self, t("mainwindow.msg.theme_import.title"), message)
+
+    def _on_event_row_activated(self, row, _col):
+        # Double-clicking a row opens its edit modal: a real event goes to the
+        # event editor (which itself routes purchases to the purchase editor);
+        # a pending recurring occurrence opens its template editor.
+        item = self._events_table.item(row, 0)
+        if item is None:
+            return
+        value = item.data(Qt.UserRole)
+        if not value:
+            return
+        if isinstance(value, str) and value.startswith("virtual:"):
+            self._edit_recurring_event(value.split(":")[1])
+        else:
+            self._edit_event(value)
 
     def _edit_event(self, event_id):
         events = {e.id: e for e in self._financial_event_use_cases.list_events()}
@@ -1679,6 +1789,10 @@ class MainWindow(QMainWindow):
             self._category_breakdown_widget.refresh()
         if hasattr(self, '_account_summary_widget'):
             self._account_summary_widget.refresh()
+        if hasattr(self, '_account_detail_widget'):
+            self._account_detail_widget.refresh()
+        if hasattr(self, '_credit_card_detail_widget'):
+            self._credit_card_detail_widget.refresh()
 
     def _populate_filter_combos(self):
         self._filter_category.blockSignals(True)
@@ -1846,6 +1960,7 @@ class MainWindow(QMainWindow):
             self._accounts_table.setItem(i, 2, QTableWidgetItem(format_currency(a.initial_balance, "BRL")))
             self._accounts_table.setItem(i, 3, QTableWidgetItem(a.id))
             self._accounts_table.setCellWidget(i, 4, self._make_actions_widget([
+                (t("account_detail.view"), "fa6s.eye", lambda _, acc_id=a.id: self._open_account_detail(acc_id), theme.PRIMARY),
                 (t("common.edit"), "fa6s.pen", lambda _, acc_id=a.id: self._edit_account(acc_id)),
             ]))
         self._accounts_table.resizeColumnsToContents()
@@ -1985,7 +2100,9 @@ class MainWindow(QMainWindow):
         cards = self._credit_card_use_cases.list_cards()
         self._credit_cards_table.setRowCount(len(cards))
         for i, c in enumerate(cards):
-            self._credit_cards_table.setItem(i, 0, QTableWidgetItem(c.name))
+            name_item = QTableWidgetItem(c.name)
+            name_item.setData(Qt.UserRole, c.id)
+            self._credit_cards_table.setItem(i, 0, name_item)
             self._credit_cards_table.setItem(i, 1, QTableWidgetItem(c.issuer))
             self._credit_cards_table.setItem(i, 2, QTableWidgetItem(format_currency(c.credit_limit, "BRL")))
             self._credit_cards_table.setItem(i, 3, QTableWidgetItem(str(c.closing_day)))

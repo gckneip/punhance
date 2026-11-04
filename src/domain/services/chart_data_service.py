@@ -628,6 +628,14 @@ class ChartDataService:
         for category_id, bucket in merged.items():
             income, expenses = bucket["income"], bucket["expenses"]
             values = self._metric_values(metrics, income, expenses)
+            # Per-category spending is shown NET of any income/refunds filed under
+            # the same category, so a "spending by category" widget reconciles
+            # with the Category Analysis pie and its drill-down (which net the
+            # same way). Scoped to category grouping only - the NET/INCOME
+            # metrics and the other breakdown/KPI paths keep their gross-expense,
+            # refund-as-income convention.
+            if MetricType.EXPENSES.value in values:
+                values[MetricType.EXPENSES.value] = expenses - income
             label = category_names.get(category_id, "Uncategorized") if category_id else "Uncategorized"
             rows.append(BreakdownRow(dimension_id=category_id, dimension_label=label, values=values))
         rows.sort(key=lambda r: sum(r.values.values()), reverse=True)
