@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-11-05
+
 ### Added
 
 - Top-level mode switch: a "Finance / Investments" toggle at the top of the window swaps between the finance menus (dashboard, events, calendar, accounts, etc.) and a dedicated set of investment menus, keeping each domain's navigation focused.
