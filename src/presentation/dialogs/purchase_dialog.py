@@ -151,16 +151,19 @@ class PurchaseDialog(QDialog):
         left_column.addWidget(self.items_label)
 
         self.items_table = QTableWidget()
-        self.items_table.setColumnCount(7)
+        self.items_table.setColumnCount(8)
         self.items_table.setHorizontalHeaderLabels(
             [
                 t("purchase_dialog.item.product"), t("purchase_dialog.item.name"),
                 t("purchase_dialog.item.qty"), t("purchase_dialog.item.unit"),
                 t("purchase_dialog.item.unit_price"), t("purchase_dialog.item.total"),
-                t("common.category"),
+                t("common.category"), t("common.actions"),
             ]
         )
-        self.items_table.horizontalHeader().setStretchLastSection(True)
+        # The last column holds a compact remove-item button, so it must not
+        # stretch; columns are sized to their content and the table scrolls
+        # horizontally for any overflow (see _sync_item_table_layout).
+        self.items_table.horizontalHeader().setStretchLastSection(False)
         self.items_table.setAlternatingRowColors(True)
         self.items_table.setMinimumHeight(180)
         # Product/Name/Category can all hold long text: columns are sized to
@@ -438,12 +441,24 @@ class PurchaseDialog(QDialog):
         self._fit_combo_min_width(cat_combo)
         self.items_table.setCellWidget(row, 6, cat_combo)
 
+        # Per-row remove button. It carries its own row's product_container so
+        # the handler can locate the (possibly shifted) row at click time rather
+        # than capturing a stale row index.
+        remove_btn = QPushButton()
+        remove_btn.setIcon(icons.icon("fa6s.trash", color=theme.EXPENSE))
+        remove_btn.setFixedWidth(36)
+        remove_btn.setToolTip(t("purchase_dialog.remove_item"))
+        remove_btn.clicked.connect(
+            lambda _checked=False, container=product_container: self._remove_item_row(container)
+        )
+        self.items_table.setCellWidget(row, 7, remove_btn)
+
         # Force every control tall enough that its (Fixed-height) content rect
         # comfortably clears the font line height - see _control_min_height.
         control_h = self._control_min_height()
         for control in (
             product_combo, add_product_btn, name_edit, qty_spin,
-            unit_combo, price_spin, total_spin, cat_combo,
+            unit_combo, price_spin, total_spin, cat_combo, remove_btn,
         ):
             control.setMinimumHeight(control_h)
 
@@ -458,6 +473,22 @@ class PurchaseDialog(QDialog):
         # before this fix. Measuring one event-loop tick later, after
         # polishing has happened, gets the real size.
         QTimer.singleShot(0, self._sync_item_table_layout)
+
+    def _remove_item_row(self, container):
+        """Remove the line-item row whose column-0 widget is ``container``.
+
+        The row is located live (not by a captured index) because removing an
+        earlier row shifts the ones after it. The row's product combo is also
+        pruned from ``_product_combos`` so that append-only broadcast list (see
+        _add_product) never ends up calling methods on a deleted widget."""
+        for row in range(self.items_table.rowCount()):
+            if self.items_table.cellWidget(row, 0) is container:
+                combo = getattr(container, "product_combo", None)
+                if combo in self._product_combos:
+                    self._product_combos.remove(combo)
+                self.items_table.removeRow(row)
+                self._sync_item_table_layout()
+                return
 
     def _control_min_height(self) -> int:
         # A QComboBox/QDoubleSpinBox has a Fixed vertical size policy, so it

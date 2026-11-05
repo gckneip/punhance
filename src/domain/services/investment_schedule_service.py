@@ -19,16 +19,24 @@ def _add_months(d: date, n: int) -> date:
     return date(year, month, day)
 
 
-def _step(d: date, frequency: ScheduleFrequency, interval: int) -> date:
-    if frequency == ScheduleFrequency.DAILY:
-        return d + timedelta(days=interval)
+def _occurrence(
+    start: date, frequency: ScheduleFrequency, interval: int, n: int
+) -> date:
+    """The n-th occurrence (n>=0) anchored to `start`.
+
+    Anchoring every occurrence to the original start (rather than stepping from
+    the previous, already-clamped date) keeps the day-of-month stable: a 31st
+    schedule yields Jan 31, Feb 28, Mar 31, ... instead of drifting down to the
+    28th after the first short month.
+    """
     if frequency == ScheduleFrequency.WEEKLY:
-        return d + timedelta(weeks=interval)
+        return start + timedelta(weeks=interval * n)
     if frequency == ScheduleFrequency.MONTHLY:
-        return _add_months(d, interval)
+        return _add_months(start, interval * n)
     if frequency == ScheduleFrequency.YEARLY:
-        return _add_months(d, 12 * interval)
-    return d + timedelta(days=interval)
+        return _add_months(start, 12 * interval * n)
+    # DAILY and any unknown frequency fall back to day steps.
+    return start + timedelta(days=interval * n)
 
 
 def occurrences_between(
@@ -46,13 +54,12 @@ def occurrences_between(
     if end is not None and date_to > end:
         date_to = end
     result: List[date] = []
-    current = start
-    count = 0
-    while current <= date_to and count < max_occurrences:
+    for n in range(max_occurrences):
+        current = _occurrence(start, frequency, interval, n)
+        if current > date_to:
+            break
         if current >= date_from:
             result.append(current)
-        current = _step(current, frequency, interval)
-        count += 1
     return result
 
 
@@ -66,12 +73,11 @@ def next_occurrence(
 ) -> Optional[date]:
     """First occurrence strictly after `after` (and not past `end`), or None."""
     interval = max(interval, 1)
-    current = start
-    for _ in range(max_steps):
+    for n in range(max_steps):
+        current = _occurrence(start, frequency, interval, n)
         if end is not None and current > end:
             return None
         if current > after:
             return current
-        current = _step(current, frequency, interval)
     return None
 

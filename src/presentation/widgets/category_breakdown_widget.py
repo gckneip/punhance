@@ -123,17 +123,20 @@ class CategoryBreakdownWidget(QWidget):
 
         self._table.resizeColumnsToContents()
 
-        # Feed the pie with only the categories that actually spent something,
-        # keeping a parallel id list so a clicked slice maps back to its category.
-        # (PieChartWidget drops non-positive values, so pre-filtering here keeps
-        # slice indices aligned with self._pie_category_ids.)
+        # Feed the pie with each category's NET spending (expenses minus any
+        # income/refunds filed under it), so a slice reconciles with the
+        # drill-down modal, which nets the same way. Keep a parallel id list so
+        # a clicked slice maps back to its category. (PieChartWidget drops
+        # non-positive values, so pre-filtering to net > 0 here keeps slice
+        # indices aligned with self._pie_category_ids.)
         self._pie_category_ids = []
         pie_labels, pie_values = [], []
         for item in breakdown.items:
-            if item.total_expenses > 0:
+            net_spent = item.total_expenses - item.total_income
+            if net_spent > 0:
                 self._pie_category_ids.append(item.category_id)
                 pie_labels.append(self._category_name(item.category_id))
-                pie_values.append(item.total_expenses)
+                pie_values.append(net_spent)
 
         if pie_values:
             self._pie.set_series(pie_labels, {"expenses": pie_values})

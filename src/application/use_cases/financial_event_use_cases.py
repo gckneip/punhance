@@ -53,6 +53,7 @@ class FinancialEventUseCases:
         category_id: Optional[str] = None,
         account_id: Optional[str] = None,
         destination_account_id: Optional[str] = None,
+        credit_card_id: Optional[str] = None,
         counterparty_id: Optional[str] = None,
         description: Optional[str] = None,
     ) -> List[FinancialEventDTO]:
@@ -63,6 +64,7 @@ class FinancialEventUseCases:
             category_id=category_id,
             account_id=account_id,
             destination_account_id=destination_account_id,
+            credit_card_id=credit_card_id,
             counterparty_id=counterparty_id,
             description=description,
         )
