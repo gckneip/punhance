@@ -35,6 +35,9 @@ def _add_one_month(d: date) -> date:
 
 
 class PurchaseDialog(QDialog):
+    _COMPACT_ITEMS_HEIGHT = 180
+    _EXPANDED_ITEMS_HEIGHT = 440
+
     def __init__(
         self,
         categories: List[CategoryDTO],
@@ -165,7 +168,11 @@ class PurchaseDialog(QDialog):
         # horizontally for any overflow (see _sync_item_table_layout).
         self.items_table.horizontalHeader().setStretchLastSection(False)
         self.items_table.setAlternatingRowColors(True)
-        self.items_table.setMinimumHeight(180)
+        # Compact by default; the expand toggle in items_btn_row swaps this for
+        # _EXPANDED_ITEMS_HEIGHT so more rows are visible without scrolling. A
+        # fixed (not minimum) height lets the dialog's SetFixedSize re-sizing
+        # grow/shrink the dialog to match whichever state is active.
+        self.items_table.setFixedHeight(self._COMPACT_ITEMS_HEIGHT)
         # Product/Name/Category can all hold long text: columns are sized to
         # fit their content (see _sync_item_table_layout) and can add up to
         # more than the table's own width, so let it scroll horizontally for
@@ -186,7 +193,21 @@ class PurchaseDialog(QDialog):
         # _add_item_row's first positional param (`name`).
         self._btn_add_item.clicked.connect(lambda: self._add_item_row())
         btn_row.addWidget(self._btn_add_item)
+
+        self._items_expanded = False
+        self._btn_toggle_expand = QPushButton(t("purchase_dialog.expand_items"))
+        self._btn_toggle_expand.setIcon(icons.icon("fa6s.chevron-down"))
+        self._btn_toggle_expand.clicked.connect(self._toggle_items_expanded)
+        btn_row.addWidget(self._btn_toggle_expand)
+
         btn_row.addStretch()
+
+        # Live sum of every item's total, recolored green/red against total_spin
+        # so a mismatch is visible before the OK-time validation warning fires.
+        self.items_total_label = QLabel()
+        self.items_total_label.setStyleSheet("font-weight: bold;")
+        btn_row.addWidget(self.items_total_label)
+
         left_column.addWidget(self.items_btn_row)
 
         content_row = QHBoxLayout()
@@ -239,6 +260,7 @@ class PurchaseDialog(QDialog):
         self._on_installments_toggled(False)
 
         self.total_spin.valueChanged.connect(self._update_installment_preview)
+        self.total_spin.valueChanged.connect(self._update_items_total)
         self.date_edit.dateChanged.connect(self._update_installment_preview)
 
         if purchase_data is not None:
@@ -304,6 +326,32 @@ class PurchaseDialog(QDialog):
         self.items_label.setVisible(checked)
         self.items_table.setVisible(checked)
         self.items_btn_row.setVisible(checked)
+        if checked:
+            self._update_items_total()
+
+    def _toggle_items_expanded(self):
+        self._items_expanded = not self._items_expanded
+        if self._items_expanded:
+            self.items_table.setFixedHeight(self._EXPANDED_ITEMS_HEIGHT)
+            self._btn_toggle_expand.setText(t("purchase_dialog.collapse_items"))
+            self._btn_toggle_expand.setIcon(icons.icon("fa6s.chevron-up"))
+        else:
+            self.items_table.setFixedHeight(self._COMPACT_ITEMS_HEIGHT)
+            self._btn_toggle_expand.setText(t("purchase_dialog.expand_items"))
+            self._btn_toggle_expand.setIcon(icons.icon("fa6s.chevron-down"))
+
+    def _update_items_total(self):
+        items_total = round(sum(
+            self.items_table.cellWidget(row, 5).value()
+            for row in range(self.items_table.rowCount())
+        ), 2)
+        target = round(self.total_spin.value(), 2)
+        matches = abs(items_total - target) <= 0.01
+        color = theme.INCOME if matches else theme.EXPENSE
+        self.items_total_label.setText(
+            t("purchase_dialog.items_total", amount=format_currency(items_total, "BRL"))
+        )
+        self.items_total_label.setStyleSheet(f"color: {color}; font-weight: bold;")
 
     def _load_purchase_data(self, purchase_data):
         purchase = purchase_data["purchase"]
@@ -429,6 +477,7 @@ class PurchaseDialog(QDialog):
             total_spin.setValue(round(qty_spin.value() * price_spin.value(), 2))
         qty_spin.valueChanged.connect(_recalc_total)
         price_spin.valueChanged.connect(_recalc_total)
+        total_spin.valueChanged.connect(self._update_items_total)
 
         cat_combo = QComboBox()
         cat_combo.addItem(t("common.none"), None)
@@ -473,6 +522,7 @@ class PurchaseDialog(QDialog):
         # before this fix. Measuring one event-loop tick later, after
         # polishing has happened, gets the real size.
         QTimer.singleShot(0, self._sync_item_table_layout)
+        self._update_items_total()
 
     def _remove_item_row(self, container):
         """Remove the line-item row whose column-0 widget is ``container``.
@@ -488,6 +538,7 @@ class PurchaseDialog(QDialog):
                     self._product_combos.remove(combo)
                 self.items_table.removeRow(row)
                 self._sync_item_table_layout()
+                self._update_items_total()
                 return
 
     def _control_min_height(self) -> int:
