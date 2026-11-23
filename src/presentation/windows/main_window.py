@@ -233,6 +233,7 @@ class MainWindow(QMainWindow):
         self._build_categories_tab()
         self._build_counterparties_tab()
         self._build_products_tab()
+        self._build_price_comparison_tab()
         self._build_shopping_list_tab()
         self._build_credit_cards_tab()
         self._build_installments_tab()
@@ -550,6 +551,24 @@ class MainWindow(QMainWindow):
         outer_layout.addWidget(right, 1)
 
         self._tabs.addTab(tab, icons.icon("fa6s.box"), t("mainwindow.tab.products"))
+
+    def _build_price_comparison_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        hint = QLabel(t("mainwindow.price_comparison.hint"))
+        hint.setWordWrap(True)
+        hint.setObjectName("mutedLabel")
+        layout.addWidget(hint)
+
+        self._price_matrix_table = EvenColumnsTableWidget()
+        self._price_matrix_table.setObjectName("mainTabTable")
+        self._price_matrix_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._price_matrix_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._price_matrix_table.setAlternatingRowColors(True)
+        layout.addWidget(self._price_matrix_table)
+
+        self._tabs.addTab(tab, icons.icon("fa6s.scale-balanced"), t("mainwindow.tab.price_comparison"))
 
     def _build_shopping_list_tab(self):
         tab = QWidget()
@@ -925,7 +944,14 @@ class MainWindow(QMainWindow):
 
         events = self._purchase_use_cases.get_recent_events_for_product(product_id, limit=20)
         average_price = self._purchase_use_cases.get_average_price_by_product().get(product_id)
-        dialog = ProductDetailDialog(self, product=product, events=events, average_price=average_price)
+        counterparty_names = {c.id: c.name for c in self._counterparty_use_cases.list_counterparties()}
+        dialog = ProductDetailDialog(
+            self,
+            product=product,
+            events=events,
+            average_price=average_price,
+            counterparty_names=counterparty_names,
+        )
         dialog.exec()
 
     def _delete_product(self, product_id):
@@ -1768,6 +1794,7 @@ class MainWindow(QMainWindow):
         self._refresh_categories()
         self._refresh_counterparties()
         self._refresh_products()
+        self._refresh_price_comparison()
         self._refresh_shopping_list()
         self._refresh_credit_cards()
         if hasattr(self, "_investment_dashboard"):
@@ -2043,6 +2070,60 @@ class MainWindow(QMainWindow):
             [name for name, _ in entries],
             {t("mainwindow.products.total_spent"): [total for _, total in entries]},
         )
+
+    def _refresh_price_comparison(self):
+        matrix = self._purchase_use_cases.get_price_matrix_by_product_counterparty()
+        product_names = {p.id: p.name for p in self._product_use_cases.list_products()}
+        counterparty_names = {c.id: c.name for c in self._counterparty_use_cases.list_counterparties()}
+
+        counterparty_ids = matrix.counterparty_ids
+        headers = [t("common.product")]
+        for cp_id in counterparty_ids:
+            if cp_id is None:
+                headers.append(t("renderer.label.no_counterparty"))
+            else:
+                headers.append(counterparty_names.get(cp_id, cp_id))
+
+        table = self._price_matrix_table
+        table.setColumnCount(len(headers))
+        table.setHorizontalHeaderLabels(headers)
+
+        products = sorted(
+            matrix.product_ids,
+            key=lambda pid: product_names.get(pid, pid).lower(),
+        )
+        # one row per product + a trailing "Total" row
+        table.setRowCount(len(products) + (1 if products else 0))
+
+        column_totals = [0.0 for _ in counterparty_ids]
+        for row, pid in enumerate(products):
+            name_item = QTableWidgetItem(product_names.get(pid, pid))
+            name_item.setData(Qt.UserRole, pid)
+            table.setItem(row, 0, name_item)
+
+            prices = matrix.averages.get(pid, {})
+            for col, cp_id in enumerate(counterparty_ids, start=1):
+                price = prices.get(cp_id)
+                if price is None:
+                    table.setItem(row, col, QTableWidgetItem(""))
+                    continue
+                column_totals[col - 1] += price
+                table.setItem(row, col, QTableWidgetItem(format_currency(price, "BRL")))
+
+        if products:
+            total_row = len(products)
+            total_label = QTableWidgetItem(t("common.total"))
+            bold = total_label.font()
+            bold.setBold(True)
+            total_label.setFont(bold)
+            table.setItem(total_row, 0, total_label)
+            for col, total in enumerate(column_totals, start=1):
+                item = QTableWidgetItem(format_currency(total, "BRL"))
+                item.setFont(bold)
+                table.setItem(total_row, col, item)
+
+        table.resizeColumnsToContents()
+        table.resizeRowsToContents()
 
     def _refresh_shopping_list(self):
         horizon = self._shopping_horizon.currentData()

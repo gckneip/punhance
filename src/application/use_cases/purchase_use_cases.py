@@ -14,7 +14,7 @@ from src.domain.services.installment_service import InstallmentService
 from src.domain.services.shopping_suggestion_service import ShoppingSuggestionService
 from src.application.dto.purchase_dto import (
     CreatePurchaseDTO, PurchaseDTO, PurchaseItemDTO, InstallmentDTO, ProductEventDTO,
-    ShoppingSuggestionDTO, ShoppingListDTO,
+    ShoppingSuggestionDTO, ShoppingListDTO, ProductPriceMatrixDTO,
 )
 
 
@@ -305,6 +305,29 @@ class PurchaseUseCases:
             for product_id in best_price
         }
 
+    def get_price_matrix_by_product_counterparty(self) -> ProductPriceMatrixDTO:
+        """Average unit price per (product, counterparty) across all purchases."""
+        sums: Dict[tuple, float] = {}
+        counts: Dict[tuple, int] = {}
+        product_ids = set()
+        counterparty_ids = set()
+        for product_id, unit_price, counterparty_id in self._purchase_repo.find_product_prices_with_counterparty():
+            key = (product_id, counterparty_id)
+            sums[key] = sums.get(key, 0.0) + unit_price
+            counts[key] = counts.get(key, 0) + 1
+            product_ids.add(product_id)
+            counterparty_ids.add(counterparty_id)
+
+        averages: Dict[str, Dict[Optional[str], float]] = {}
+        for (product_id, counterparty_id), total in sums.items():
+            averages.setdefault(product_id, {})[counterparty_id] = total / counts[(product_id, counterparty_id)]
+
+        return ProductPriceMatrixDTO(
+            product_ids=sorted(product_ids),
+            counterparty_ids=sorted(counterparty_ids, key=lambda c: (c is None, c or "")),
+            averages=averages,
+        )
+
     def get_recent_events_for_product(self, product_id: str, limit: int = 20) -> List[ProductEventDTO]:
         items = self._purchase_repo.find_items_by_product(product_id, limit=limit)
         result = []
@@ -320,6 +343,7 @@ class PurchaseUseCases:
                 total_price=item.total_price,
                 purchase_id=item.purchase_id,
                 financial_event_id=purchase.financial_event_id if purchase else None,
+                counterparty_id=purchase.counterparty_id if purchase else None,
             ))
         return result
 

@@ -68,6 +68,20 @@ class ProductEventDTO:
     total_price: float
     purchase_id: str
     financial_event_id: Optional[str]
+    counterparty_id: Optional[str] = None
+
+
+@dataclass
+class ProductPriceMatrixDTO:
+    """Average unit price of each product at each counterparty.
+
+    ``averages[product_id][counterparty_id]`` holds the mean unit price; a
+    missing ``counterparty_id`` key means the product was never bought there
+    (rendered blank). ``counterparty_ids`` may contain ``None`` for purchases
+    with no counterparty set."""
+    product_ids: List[str]
+    counterparty_ids: List[Optional[str]]
+    averages: dict = field(default_factory=dict)
 
 
 @dataclass

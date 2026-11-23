@@ -8,21 +8,24 @@ from src.presentation.i18n import format_currency, format_date, t
 
 
 class ProductDetailDialog(QDialog):
-    def __init__(self, parent, product, events, average_price=None):
+    def __init__(self, parent, product, events, average_price=None, counterparty_names=None):
         super().__init__(parent)
         self.setWindowTitle(t("product_detail.title", name=product.name))
         self.setModal(True)
-        self.resize(560, 420)
+        self.resize(760, 480)
+
+        counterparty_names = counterparty_names or {}
 
         layout = QVBoxLayout(self)
 
         if not events:
             layout.addWidget(QLabel(t("product_detail.no_events")))
         else:
-            table = QTableWidget(len(events), 5)
+            table = QTableWidget(len(events), 6)
             table.setHorizontalHeaderLabels([
                 t("common.date"),
                 t("common.description"),
+                t("product_detail.counterparty"),
                 t("product_detail.quantity"),
                 t("product_detail.unit_price"),
                 t("product_detail.total"),
@@ -33,7 +36,11 @@ class ProductDetailDialog(QDialog):
             for row, event in enumerate(events):
                 table.setItem(row, 0, QTableWidgetItem(format_date(event.event_date) if event.event_date else ""))
                 table.setItem(row, 1, QTableWidgetItem(event.description or ""))
-                table.setItem(row, 2, QTableWidgetItem(f"{event.quantity:g} {event.unit}"))
+
+                counterparty = counterparty_names.get(event.counterparty_id) if event.counterparty_id else None
+                table.setItem(row, 2, QTableWidgetItem(counterparty or t("renderer.label.no_counterparty")))
+
+                table.setItem(row, 3, QTableWidgetItem(f"{event.quantity:g} {event.unit}"))
 
                 price_item = QTableWidgetItem(format_currency(event.unit_price))
                 if average_price is not None:
@@ -41,9 +48,9 @@ class ProductDetailDialog(QDialog):
                         price_item.setForeground(QColor(theme.INCOME))
                     elif event.unit_price > average_price:
                         price_item.setForeground(QColor(theme.EXPENSE))
-                table.setItem(row, 3, price_item)
+                table.setItem(row, 4, price_item)
 
-                table.setItem(row, 4, QTableWidgetItem(format_currency(event.total_price)))
+                table.setItem(row, 5, QTableWidgetItem(format_currency(event.total_price)))
             table.resizeColumnsToContents()
             table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
             layout.addWidget(table)

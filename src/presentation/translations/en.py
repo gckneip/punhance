@@ -29,6 +29,8 @@ TRANSLATIONS = {
     "common.warning": "Warning",
     "common.info": "Information",
     "common.confirm": "Confirm",
+    "common.product": "Product",
+    "common.total": "Total",
 
     # --- application shell / startup (main.py) ---
     "app.title": "Personal Finance Manager",
@@ -420,6 +422,8 @@ TRANSLATIONS = {
     'mainwindow.tab.dashboard': 'Dashboard',
     'mainwindow.tab.events': 'Events',
     'mainwindow.tab.installments': 'Installments',
+    'mainwindow.tab.price_comparison': 'Price Comparison',
+    'mainwindow.price_comparison.hint': 'Average unit price of each product per counterparty. Blank cells mean the product was never purchased at that counterparty.',
     'mainwindow.tab.products': 'Products',
     'mainwindow.tab.recurring_events': 'Recurring Events',
     'mainwindow.tab.shopping_list': 'Shopping List',
@@ -469,6 +473,7 @@ TRANSLATIONS = {
     'preset.upcoming_events': 'Upcoming Events (Next 30 Days)',
     'preset.upcoming_installments': 'Upcoming Installments (Next 30 Days)',
     'preset.upcoming_recurring_events': 'Upcoming Recurring Events (Next 30 Days)',
+    'product_detail.counterparty': 'Counterparty',
     'product_detail.no_events': 'No purchase events for this product yet.',
     'product_detail.quantity': 'Quantity',
     'product_detail.title': 'Recent Events - {name}',

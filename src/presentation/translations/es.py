@@ -28,6 +28,8 @@ TRANSLATIONS = {
     "common.warning": "Advertencia",
     "common.info": "Información",
     "common.confirm": "Confirmar",
+    "common.product": "Producto",
+    "common.total": "Total",
 
     # --- application shell / startup (main.py) ---
     "app.title": "Gestor de Finanzas Personales",
@@ -419,6 +421,8 @@ TRANSLATIONS = {
     'mainwindow.tab.dashboard': 'Panel',
     'mainwindow.tab.events': 'Movimientos',
     'mainwindow.tab.installments': 'Cuotas',
+    'mainwindow.tab.price_comparison': 'Comparación de Precios',
+    'mainwindow.price_comparison.hint': 'Precio unitario medio de cada producto por contraparte. Las celdas en blanco indican que el producto nunca se compró en esa contraparte.',
     'mainwindow.tab.products': 'Productos',
     'mainwindow.tab.recurring_events': 'Movimientos Recurrentes',
     'mainwindow.tab.shopping_list': 'Lista de Compras',
@@ -468,6 +472,7 @@ TRANSLATIONS = {
     'preset.upcoming_events': 'Próximos Eventos (Próximos 30 Días)',
     'preset.upcoming_installments': 'Próximas Cuotas (Próximos 30 Días)',
     'preset.upcoming_recurring_events': 'Próximos Eventos Recurrentes (Próximos 30 Días)',
+    'product_detail.counterparty': 'Contraparte',
     'product_detail.no_events': 'Aún no hay eventos de compra para este producto.',
     'product_detail.quantity': 'Cantidad',
     'product_detail.title': 'Eventos Recientes - {name}',
